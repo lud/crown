@@ -1,21 +1,26 @@
 # Crown
 
+<!-- rdmx :badges
+    hexpm         : "crown?color=4e2a8e"
+    github_action : "lud/crown/elixir.yaml?label=CI&branch=main"
+    license       : crown
+    -->
+[![hex.pm Version](https://img.shields.io/hexpm/v/crown?color=4e2a8e)](https://hex.pm/packages/crown)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/lud/crown/elixir.yaml?label=CI&branch=main)](https://github.com/lud/crown/actions/workflows/elixir.yaml?query=branch%3Amain)
+[![License](https://img.shields.io/hexpm/l/crown.svg)](https://hex.pm/packages/crown)
+<!-- rdmx /:badges -->
+
 **TODO: Add description**
 
 ## Installation
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `crown` to your list of dependencies in `mix.exs`:
-
+<!-- rdmx :app_dep vsn:$app_vsn -->
 ```elixir
 def deps do
   [
-    {:crown, "~> 0.1.0"}
+    {:crown, "~> 0.1"},
   ]
 end
 ```
-
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at <https://hexdocs.pm/crown>.
+<!-- rdmx /:app_dep -->
 

@@ -1,6 +1,7 @@
 # quokka:skip-module-directive-reordering
 
 defmodule Crown.TelemetryLogger do
+
   events = %{
     # Process lifecycle
     [:crown, :process, :initialized] => :info,

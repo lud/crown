@@ -14,7 +14,17 @@ defmodule Crown.MixProject do
       deps: deps(),
       description: "A leader election and supervisor library for Elixir, using external oracles",
       package: package(),
-      source_url: @source_url
+      source_url: @source_url,
+      dialyzer: dialyzer(),
+      docs: [main: "Crown"]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
+        dialyzer: :test
+      ]
     ]
   end
 
@@ -41,7 +51,23 @@ defmodule Crown.MixProject do
       {:nimble_options, "~> 1.0"},
       {:telemetry, "~> 1.0"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
-      {:mox, "~> 1.0", only: :test}
+      {:mox, "~> 1.0", only: :test},
+
+      # Dev
+      {:dialyxir, ">= 0.0.0", only: [:dev, :test], runtime: false},
+      {:credo, ">= 0.0.0", only: [:dev, :test], runtime: false},
+      {:ex_check, ">= 0.0.0", only: [:dev, :test], runtime: false},
+      {:mix_audit, ">= 0.0.0", only: [:dev, :test], runtime: false},
+      {:readmix, ">= 0.0.0", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  defp dialyzer do
+    [
+      flags: [:unmatched_returns, :error_handling, :unknown, :extra_return],
+      list_unused_filters: true,
+      plt_add_deps: :app_tree,
+      plt_local_path: "_build/plts"
     ]
   end
 end

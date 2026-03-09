@@ -16,7 +16,7 @@ defmodule Crown do
                       required: true,
                       doc: """
                       A `{module, opts}` tuple. `module` must implement `Crown.Oracle`.
-                      `opts` are passed to `Crown.Oracle.init/1`.
+                      `opts` are passed to `c:Crown.Oracle.init/1`.
                       """
                     ],
                     child_spec: [
@@ -78,6 +78,44 @@ defmodule Crown do
                     ]
                   )
 
+  @moduledoc """
+  Leader election and supervised child management backed by an external oracle.
+
+  Crown is a `GenServer` that coordinates leader election across an Erlang
+  cluster. Leadership authority is delegated to a pluggable oracle (see
+  `Crown.Oracle`) — typically a database lease or distributed lock — so that
+  only one node holds the crown at a time even during netsplits.
+
+  The elected leader starts a supervised child (the `:child_spec` option) and
+  keeps it running for as long as leadership is held. When leadership is lost
+  the child is stopped and, optionally, a `:follower_child_spec` is started
+  instead. Followers monitor the leader and attempt to claim when it goes down.
+
+  Crown registers the leader globally as `{Crown, name}` so followers on other
+  nodes can discover and monitor it.
+
+  ## Usage
+
+      children = [
+        {Crown,
+         name: :my_worker,
+         oracle: {MyApp.RedisOracle, lock_key: "my_worker"},
+         child_spec: MyApp.SingletonWorker}
+      ]
+
+      Supervisor.start_link(children, strategy: :one_for_one)
+
+  ## Options
+
+  #{NimbleOptions.docs(@options_schema)}
+
+  ## Telemetry
+
+  Crown emits telemetry events under the `[:crown, ...]` prefix. Use
+  `attach_default_logger/1` for built-in logging or attach your own handlers.
+  See `Crown.Telemetry` for the full list of events.
+  """
+
   def child_spec(opts) do
     # Name is mandatory but we will the that be validated by the init callback.
     # Here this is just to ease multiple crown processes in a list of child
@@ -117,6 +155,7 @@ defmodule Crown do
   def global_name(name) when is_atom(name), do: {__MODULE__, name}
 
   defmodule State do
+    @moduledoc false
     @enforce_keys [
       :name,
       :phase,
