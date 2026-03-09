@@ -71,7 +71,7 @@ defmodule Crown.TelemetryLoggerTest do
 
     assert log =~ "[crown] #{crown_name} initialized"
     assert log =~ "[crown] #{crown_name} elected as leader"
-    assert log =~ "[crown] #{crown_name} terminated (:normal)"
+    assert log =~ "[crown] #{crown_name} terminating (:normal)"
   end
 
   # --- attach with min_log_level filter ---
@@ -164,16 +164,16 @@ defmodule Crown.TelemetryLoggerTest do
     log =
       capture_log(fn ->
         {:ok, pid} =
-          Crown.start_link(
+          Crown.start(
             name: crown_name,
             oracle: {Crown.OracleMock, []},
-            child_spec: nil,
-            monitor_delay: 5000
+            child_spec: nil
           )
 
         assert_receive :claimed
+        ref = Process.monitor(pid)
         assert_receive :refresh_failed, 500
-        stop_and_wait(pid)
+        assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 500
       end)
 
     assert log =~ "[crown] #{crown_name} lost leadership"

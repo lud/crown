@@ -225,8 +225,10 @@ defmodule Crown do
 
   @impl GenServer
   def handle_info({:timeout, tref, event}, %State{tref: tref} = state) do
-    {:ok, state} = handle_event(event, consume_timer(state, tref))
-    {:noreply, state}
+    case handle_event(event, consume_timer(state, tref)) do
+      {:ok, state} -> {:noreply, state}
+      {:stop, reason, state} -> {:stop, reason, state}
+    end
   end
 
   def handle_info({:LEADER_DOWN, ref, :process, _, _}, %State{leader_mref: ref} = state) do
@@ -236,8 +238,12 @@ defmodule Crown do
 
   def handle_info({:EXIT, pid, reason}, %State{sup: {pid, kind}} = state) do
     Logger.error("Child crashed: #{inspect(kind)}")
-    telemetry_exec([:crown, :child, :exited], state, %{kind: kind, reason: reason})
+
     {:stop, _reason, _state} = handle_event({:SUP_EXIT, reason}, state)
+  end
+
+  def handle_info({:global_name_conflict, _name}, %State{} = state) do
+    {:stop, :normal, _state} = handle_event(:global_conflict, state)
   end
 
   def handle_info(message, state) do
@@ -250,7 +256,7 @@ defmodule Crown do
 
   @impl GenServer
   def terminate(reason, state) do
-    telemetry_exec([:crown, :process, :terminated], state, %{reason: reason})
+    telemetry_exec([:crown, :process, :terminating], state, %{reason: reason})
     handle_event(:terminating, state)
   end
 
@@ -261,9 +267,20 @@ defmodule Crown do
   end
 
   defp handle_event(:refresh_claim, %State{phase: :leading, tref: nil} = state) do
-    state = refresh_and_start_child(state)
-    true = state.phase in [:leading, :following]
-    {:ok, state}
+    case refresh(state) do
+      {true, delay, state} ->
+        state = put_phase(state, :leading)
+        telemetry_exec([:crown, :leadership, :refreshed], state, %{refresh_delay: delay})
+        state = set_timer(state, delay, :refresh_claim)
+        state = ensure_child_started(state, :leader)
+        {:ok, state}
+
+      {false, state} ->
+        telemetry_exec([:crown, :leadership, :lost], state)
+        state = clean_shutdown(state)
+        true = state.phase == :finishing
+        {:stop, :normal, state}
+    end
   end
 
   defp handle_event(
@@ -287,6 +304,8 @@ defmodule Crown do
 
   defp handle_event({:SUP_EXIT, reason}, %State{phase: phase} = state)
        when phase in [:leading, :following] do
+    %State{sup: {_, kind}} = state
+    telemetry_exec([:crown, :child, :exited], state, %{kind: kind, reason: reason})
     state = %State{state | sup: :none}
     state = clean_shutdown(state)
     true = state.phase == :finishing
@@ -298,6 +317,24 @@ defmodule Crown do
     # We must return a state from there.
 
     {:stop, reason, state}
+  end
+
+  defp handle_event(:global_conflict, %State{} = state) do
+    # :global already unregistered us, so we skip global_unregister_self.
+    telemetry_exec([:crown, :leadership, :conflict], state)
+
+    state =
+      case state.phase do
+        :leading ->
+          state = maybe_teardown_child(state)
+          :ok = abdicate(state)
+          state
+
+        _ ->
+          maybe_teardown_child(state)
+      end
+
+    {:stop, :normal, put_phase(state, :finishing)}
   end
 
   defp handle_event(:terminating, %State{} = state) do
@@ -324,24 +361,6 @@ defmodule Crown do
     end
   end
 
-  defp refresh_and_start_child(state) do
-    case refresh(state) do
-      {true, delay, state} ->
-        state = put_phase(state, :leading)
-        telemetry_exec([:crown, :leadership, :refreshed], state, %{refresh_delay: delay})
-        state = set_timer(state, delay, :refresh_claim)
-        ensure_child_started(state, :leader)
-
-      {false, state} ->
-        :ok = global_unregister_self(state)
-        state = put_phase(state, :following)
-        state = %State{state | monitored_node: nil}
-        telemetry_exec([:crown, :leadership, :lost], state)
-        state = ensure_child_started(state, :follower)
-        start_monitoring(state)
-    end
-  end
-
   defp start_monitoring(%State{} = state) do
     case monitor_leader(state) do
       {:monitoring, state} ->
@@ -350,12 +369,13 @@ defmodule Crown do
       :noproc ->
         state = %State{state | monitored_node: nil}
 
+        reclaim_after_abs = now_ms() + state.monitor_timeout
+
         telemetry_exec([:crown, :monitor, :failed], state, %{
           retry_count: 0,
-          elapsed_ms: 0
+          remaining_ms: state.monitor_timeout
         })
 
-        reclaim_after_abs = now_ms() + state.monitor_timeout
         set_timer(state, state.monitor_delay, {:retry_monitor, reclaim_after_abs, 0})
     end
   end
@@ -373,15 +393,18 @@ defmodule Crown do
           telemetry_exec([:crown, :monitor, :timeout], state, %{elapsed_ms: elapsed_ms})
           claim_and_start_child(state)
         else
+          retry_count = retry_count + 1
+          remaining_ms = max(reclaim_after_abs - now_ms(), 0)
+
           telemetry_exec([:crown, :monitor, :failed], state, %{
-            retry_count: retry_count + 1,
-            elapsed_ms: elapsed_ms
+            retry_count: retry_count,
+            remaining_ms: remaining_ms
           })
 
           set_timer(
             state,
             state.monitor_delay,
-            {:retry_monitor, reclaim_after_abs, retry_count + 1}
+            {:retry_monitor, reclaim_after_abs, retry_count}
           )
         end
     end
@@ -545,6 +568,9 @@ defmodule Crown do
           # duplicate leader child can exist
           state = maybe_teardown_child(state)
           :ok = abdicate(state)
+          state
+
+        :init ->
           state
 
         :following ->

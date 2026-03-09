@@ -1,17 +1,17 @@
 # quokka:skip-module-directive-reordering
 
 defmodule Crown.TelemetryLogger do
-
   events = %{
     # Process lifecycle
     [:crown, :process, :initialized] => :info,
-    [:crown, :process, :terminated] => :info,
+    [:crown, :process, :terminating] => :info,
 
     # Leadership
     [:crown, :leadership, :claimed] => :info,
     [:crown, :leadership, :rejected] => :info,
     [:crown, :leadership, :refreshed] => :debug,
     [:crown, :leadership, :lost] => :warning,
+    [:crown, :leadership, :conflict] => :warning,
 
     # Monitor
     [:crown, :monitor, :started] => :debug,
@@ -98,8 +98,8 @@ defmodule Crown.TelemetryLogger do
     end
   end
 
-  def handle_event([:crown, :process, :terminated] = p, _, %{name: name, reason: reason}, _) do
-    log(p, "[crown] #{name} terminated (#{inspect(reason)})", %{crown_name: name})
+  def handle_event([:crown, :process, :terminating] = p, _, %{name: name, reason: reason}, _) do
+    log(p, "[crown] #{name} terminating (#{inspect(reason)})", %{crown_name: name})
   end
 
   # -- Leadership --------------------------------------------------------------
@@ -136,6 +136,10 @@ defmodule Crown.TelemetryLogger do
     log(p, "[crown] #{name} lost leadership, transitioning to follower", %{crown_name: name})
   end
 
+  def handle_event([:crown, :leadership, :conflict] = p, _, %{name: name}, _) do
+    log(p, "[crown] #{name} lost global name conflict, shutting down", %{crown_name: name})
+  end
+
   # -- Monitor -----------------------------------------------------------------
 
   def handle_event(
@@ -153,12 +157,12 @@ defmodule Crown.TelemetryLogger do
   def handle_event(
         [:crown, :monitor, :failed] = p,
         _,
-        %{name: name, retry_count: retry_count, elapsed_ms: elapsed_ms},
+        %{name: name, retry_count: retry_count, remaining_ms: remaining_ms},
         _
       ) do
     log(
       p,
-      "[crown] #{name} could not find leader (attempt #{retry_count}, #{elapsed_ms}ms elapsed)",
+      "[crown] #{name} could not find leader (attempt #{retry_count}, re-claim in #{remaining_ms}ms)",
       %{crown_name: name, retry_count: retry_count}
     )
   end

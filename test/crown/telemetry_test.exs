@@ -96,7 +96,7 @@ defmodule Crown.TelemetryTest do
 
     stop_and_wait(pid)
 
-    assert_telemetry([:crown, :process, :terminated], reason: :normal)
+    assert_telemetry([:crown, :process, :terminating], reason: :normal)
     assert_telemetry([:crown, :child, :stopped], kind: :leader)
   end
 
@@ -147,7 +147,7 @@ defmodule Crown.TelemetryTest do
     assert_telemetry([:crown, :leadership, :claimed], phase: :leading)
 
     stop_and_wait(pid)
-    assert_telemetry([:crown, :process, :terminated])
+    assert_telemetry([:crown, :process, :terminating])
   end
 
   # --- Scenario: claim rejected, no leader found, monitor retries then timeout ---
@@ -186,7 +186,7 @@ defmodule Crown.TelemetryTest do
     # First failed attempt from start_monitoring
     meta = assert_telemetry([:crown, :monitor, :failed])
     assert meta.retry_count == 0
-    assert meta.elapsed_ms == 0
+    assert meta.remaining_ms == 120
     assert meta.monitored_node == nil
 
     # Retry(s) from retry_monitoring
@@ -243,7 +243,7 @@ defmodule Crown.TelemetryTest do
 
   # --- Scenario: refresh failure (leadership lost) ---
 
-  test "refresh failure emits lost, child stopped, follower started events" do
+  test "refresh failure emits lost event and process stops" do
     parent = self()
     crown_name = unique_name()
     attach_telemetry("refresh-lost")
@@ -260,31 +260,23 @@ defmodule Crown.TelemetryTest do
     end)
 
     {:ok, pid} =
-      Crown.start_link(
+      Crown.start(
         name: crown_name,
         oracle: {Crown.OracleMock, []},
-        child_spec: {Agent, fn -> :ok end},
-        follower_child_spec: {Agent, fn -> send(parent, :follower_started) end},
-        monitor_delay: 50
+        child_spec: {Agent, fn -> :ok end}
       )
 
     assert_receive :claimed
+    crown_ref = Process.monitor(pid)
     assert_receive :refresh_failed, 500
-    assert_receive :follower_started, 500
+    assert_receive {:DOWN, ^crown_ref, :process, ^pid, :normal}, 500
 
     assert_telemetry([:crown, :process, :initialized])
     assert_telemetry([:crown, :leadership, :claimed], monitored_node: node())
     assert_telemetry([:crown, :child, :started], kind: :leader)
-
-    assert_telemetry([:crown, :leadership, :lost],
-      phase: :following,
-      monitored_node: nil
-    )
-
+    assert_telemetry([:crown, :leadership, :lost], phase: :leading)
     assert_telemetry([:crown, :child, :stopped], kind: :leader)
-    assert_telemetry([:crown, :child, :started], kind: :follower)
-
-    stop_and_wait(pid)
+    assert_telemetry([:crown, :process, :terminating])
   end
 
   # --- Scenario: child crash ---
@@ -317,7 +309,7 @@ defmodule Crown.TelemetryTest do
     assert_telemetry([:crown, :leadership, :claimed])
     assert_telemetry([:crown, :child, :started], kind: :leader)
     assert_telemetry([:crown, :child, :exited], kind: :leader)
-    assert_telemetry([:crown, :process, :terminated])
+    assert_telemetry([:crown, :process, :terminating])
   end
 
   # --- Scenario: no child spec (nil) does not emit child events ---
@@ -349,21 +341,22 @@ defmodule Crown.TelemetryTest do
 
     stop_and_wait(pid)
 
-    assert_telemetry([:crown, :process, :terminated])
+    assert_telemetry([:crown, :process, :terminating])
     refute_telemetry([:crown, :child, :stopped])
   end
 
   # --- Crown.Telemetry.events/0 ---
 
-  test "Crown.Telemetry.events/0 returns all 13 event names" do
+  test "Crown.Telemetry.events/0 returns all 14 event names" do
     events = Crown.Telemetry.events()
-    assert length(events) == 13
+    assert length(events) == 14
     assert [:crown, :process, :initialized] in events
-    assert [:crown, :process, :terminated] in events
+    assert [:crown, :process, :terminating] in events
     assert [:crown, :leadership, :claimed] in events
     assert [:crown, :leadership, :rejected] in events
     assert [:crown, :leadership, :refreshed] in events
     assert [:crown, :leadership, :lost] in events
+    assert [:crown, :leadership, :conflict] in events
     assert [:crown, :monitor, :started] in events
     assert [:crown, :monitor, :failed] in events
     assert [:crown, :monitor, :timeout] in events

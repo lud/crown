@@ -503,7 +503,7 @@ defmodule CrownTest do
     stop_and_wait(pid)
   end
 
-  test "when refresh fails, leader child stops, global name is unregistered, and Crown monitors the new leader" do
+  test "when refresh fails, Crown tears down child, unregisters from global, and stops" do
     parent = self()
     crown_name = unique_name()
 
@@ -517,41 +517,26 @@ defmodule CrownTest do
       send(parent, :refresh_failed)
       {false, :state}
     end)
-    |> expect(:claim, fn :state ->
-      send(parent, :reclaimed)
-      {true, :infinity, :state}
-    end)
 
     {:ok, pid} =
-      Crown.start_link(
+      Crown.start(
         name: crown_name,
         oracle: {Crown.OracleMock, []},
-        monitor_delay: 50,
         child_spec: {Agent, fn -> send(parent, {:child_pid, self()}) end}
       )
 
     assert_receive :first_claim
     assert_receive {:child_pid, child_pid}
     child_ref = Process.monitor(child_pid)
+    crown_ref = Process.monitor(pid)
 
     assert_receive :refresh_failed, 500
-    # Child should be stopped and global name unregistered
     assert_receive {:DOWN, ^child_ref, :process, ^child_pid, _}, 500
-    refute_leader(pid)
+    assert_receive {:DOWN, ^crown_ref, :process, ^pid, :normal}, 500
     assert :undefined == :global.whereis_name(Crown.global_name(crown_name))
-
-    # Simulate another node grabbing the crown, then Crown monitors it
-    fake_leader = start_fake_leader(crown_name)
-
-    await_monitoring(crown_name, fake_leader)
-
-    # Crown is now monitoring the new leader; kill it to trigger reclaim
-    stop_and_wait(fake_leader)
-    assert_receive :reclaimed, 1000
-    stop_and_wait(pid)
   end
 
-  test "when refresh fails with no child spec, Crown unregisters from global and monitors the new leader" do
+  test "when refresh fails with no child spec, Crown unregisters from global and stops" do
     parent = self()
     crown_name = unique_name()
 
@@ -565,81 +550,25 @@ defmodule CrownTest do
       send(parent, :refresh_failed)
       {false, :state}
     end)
-    |> expect(:claim, fn :state ->
-      send(parent, :reclaimed)
-      {true, :infinity, :state}
-    end)
 
     {:ok, pid} =
-      Crown.start_link(
+      Crown.start(
         name: crown_name,
         oracle: {Crown.OracleMock, []},
-        child_spec: nil,
-        monitor_delay: 100
+        child_spec: nil
       )
 
     assert_receive :first_claim
     assert_leader(pid)
     assert pid == :global.whereis_name(Crown.global_name(crown_name))
 
+    crown_ref = Process.monitor(pid)
     assert_receive :refresh_failed, 500
-    refute_leader(pid)
+    assert_receive {:DOWN, ^crown_ref, :process, ^pid, :normal}, 500
     assert :undefined == :global.whereis_name(Crown.global_name(crown_name))
-
-    # Simulate another node grabbing the crown, then Crown monitors it
-    fake_leader = start_fake_leader(crown_name)
-    assert fake_leader == :global.whereis_name(Crown.global_name(crown_name))
-
-    await_monitoring(crown_name, fake_leader)
-
-    # Crown is now monitoring the new leader; kill it to trigger reclaim
-    stop_and_wait(fake_leader)
-    assert_receive :reclaimed, 1000
-    assert_leader(pid)
-    stop_and_wait(pid)
   end
 
-  test "after refresh failure, leader child is restarted when Crown claims after new leader dies" do
-    parent = self()
-    crown_name = unique_name()
-
-    Crown.OracleMock
-    |> expect(:init, fn _ -> {:ok, :state} end)
-    |> expect(:claim, fn :state -> {true, 50, :state} end)
-    |> expect(:refresh, fn :state ->
-      send(parent, :refresh_failed)
-      {false, :state}
-    end)
-    |> expect(:claim, fn :state ->
-      send(parent, :reclaimed)
-      {true, :infinity, :state}
-    end)
-
-    {:ok, pid} =
-      Crown.start_link(
-        name: crown_name,
-        oracle: {Crown.OracleMock, []},
-        child_spec: {Agent, fn -> send(parent, :child_started) end},
-        monitor_delay: 50
-      )
-
-    assert_receive :child_started, 500
-    assert_receive :refresh_failed, 500
-    refute_leader(pid)
-    assert :undefined == :global.whereis_name(Crown.global_name(crown_name))
-
-    # Simulate another node grabbing the crown, then Crown monitors it
-    fake_leader = start_fake_leader(crown_name)
-    await_monitoring(crown_name, fake_leader)
-
-    # Crown is now monitoring the new leader; kill it to trigger reclaim
-    stop_and_wait(fake_leader)
-    assert_receive :reclaimed, 1000
-    assert_receive :child_started, 500
-    stop_and_wait(pid)
-  end
-
-  test "after refresh failure, follower child starts and Crown monitors the new leader" do
+  test "after refresh failure, Crown process stops so monitors on other nodes fire" do
     parent = self()
     crown_name = unique_name()
 
@@ -652,27 +581,18 @@ defmodule CrownTest do
     end)
 
     {:ok, pid} =
-      Crown.start_link(
+      Crown.start(
         name: crown_name,
         oracle: {Crown.OracleMock, []},
-        child_spec: {Agent, fn -> send(parent, :leader_started) end},
-        follower_child_spec: {Agent, fn -> send(parent, :follower_started) end},
-        monitor_delay: 50
+        child_spec: {Agent, fn -> send(parent, :child_started) end}
       )
 
-    assert_receive :leader_started, 500
+    assert_receive :child_started, 500
+    crown_ref = Process.monitor(pid)
+
     assert_receive :refresh_failed, 500
-    refute_leader(pid)
-    assert :undefined == :global.whereis_name(Crown.global_name(crown_name))
-
-    # Simulate another node grabbing the crown
-    fake_leader = start_fake_leader(crown_name)
-
-    # Crown transitions to follower and monitors the new leader
-    assert_receive :follower_started, 500
-    await_monitoring(crown_name, fake_leader)
-    assert Process.alive?(fake_leader)
-    stop_and_wait(pid)
+    # Crown stops so that other nodes monitoring this pid get :DOWN
+    assert_receive {:DOWN, ^crown_ref, :process, ^pid, :normal}, 500
   end
 
   # --- Child / supervisor failure ---
@@ -746,6 +666,30 @@ defmodule CrownTest do
 
     ref = Process.monitor(pid)
     assert_receive {:DOWN, ^ref, :process, ^pid, _}, 1000
+  end
+
+  # --- Clean shutdown during init phase ---
+
+  test "stopping Crown before claim_delay fires shuts down cleanly" do
+    parent = self()
+
+    Crown.OracleMock
+    |> expect(:init, fn _ ->
+      send(parent, :oracle_init_called)
+      {:ok, :state}
+    end)
+
+    {:ok, pid} =
+      Crown.start_link(
+        name: unique_name(),
+        oracle: {Crown.OracleMock, []},
+        child_spec: nil,
+        claim_delay: 60_000
+      )
+
+    assert_receive :oracle_init_called
+    # Stop while still in :init phase (claim_delay hasn't fired)
+    stop_and_wait(pid)
   end
 
   # --- Abdicate / clean shutdown ---
@@ -841,20 +785,117 @@ defmodule CrownTest do
       {false, :state}
     end)
 
-    # No second claim — Crown goes straight to monitoring the new leader
-
     {:ok, pid} =
-      Crown.start_link(
+      Crown.start(
         name: crown_name,
         oracle: {Crown.OracleMock, []},
         child_spec: nil
       )
 
     assert_receive :claimed
+    crown_ref = Process.monitor(pid)
     assert_receive :refresh_failed, 500
-    refute_leader(pid)
+    assert_receive {:DOWN, ^crown_ref, :process, ^pid, :normal}, 500
     assert :undefined == :global.whereis_name(Crown.global_name(crown_name))
-    stop_and_wait(pid)
+  end
+
+  # --- Global name conflict ---
+
+  test "global_name_conflict while leading tears down child, abdicates, and stops" do
+    parent = self()
+    crown_name = unique_name()
+
+    Crown.OracleMockFull
+    |> expect(:init, fn _ -> {:ok, :state} end)
+    |> expect(:claim, fn :state ->
+      send(parent, :claimed)
+      {true, :infinity, :state}
+    end)
+    |> expect(:abdicate, fn :state ->
+      send(parent, :abdicated)
+      :ok
+    end)
+
+    {:ok, pid} =
+      Crown.start_link(
+        name: crown_name,
+        oracle: {Crown.OracleMockFull, []},
+        child_spec: {Agent, fn -> send(parent, {:child_pid, self()}) end}
+      )
+
+    assert_receive :claimed
+    assert_receive {:child_pid, child_pid}
+    child_ref = Process.monitor(child_pid)
+    crown_ref = Process.monitor(pid)
+
+    send(pid, {:global_name_conflict, Crown.global_name(crown_name)})
+
+    assert_receive {:DOWN, ^child_ref, :process, ^child_pid, _}, 1000
+    assert_receive :abdicated
+    assert_receive {:DOWN, ^crown_ref, :process, ^pid, :normal}, 1000
+  end
+
+  test "global_name_conflict while following tears down follower child and stops" do
+    parent = self()
+    crown_name = unique_name()
+    _fake_leader = start_fake_leader(crown_name)
+
+    Crown.OracleMock
+    |> expect(:init, fn _ -> {:ok, :state} end)
+    |> expect(:claim, fn :state ->
+      send(parent, :claimed)
+      {false, :state}
+    end)
+
+    {:ok, pid} =
+      Crown.start_link(
+        name: crown_name,
+        oracle: {Crown.OracleMock, []},
+        child_spec: nil,
+        follower_child_spec: {Agent, fn -> send(parent, {:follower_pid, self()}) end},
+        monitor_delay: 0
+      )
+
+    assert_receive :claimed
+    assert_receive {:follower_pid, follower_pid}
+    follower_ref = Process.monitor(follower_pid)
+    crown_ref = Process.monitor(pid)
+
+    send(pid, {:global_name_conflict, Crown.global_name(crown_name)})
+
+    assert_receive {:DOWN, ^follower_ref, :process, ^follower_pid, _}, 1000
+    assert_receive {:DOWN, ^crown_ref, :process, ^pid, :normal}, 1000
+  end
+
+  test "global_name_conflict while leading with no child still abdicates and stops" do
+    parent = self()
+    crown_name = unique_name()
+
+    Crown.OracleMockFull
+    |> expect(:init, fn _ -> {:ok, :state} end)
+    |> expect(:claim, fn :state ->
+      send(parent, :claimed)
+      {true, :infinity, :state}
+    end)
+    |> expect(:abdicate, fn :state ->
+      send(parent, :abdicated)
+      :ok
+    end)
+
+    {:ok, pid} =
+      Crown.start_link(
+        name: crown_name,
+        oracle: {Crown.OracleMockFull, []},
+        child_spec: nil
+      )
+
+    assert_receive :claimed
+    crown_ref = Process.monitor(pid)
+
+    send(pid, {:global_name_conflict, Crown.global_name(crown_name)})
+
+    assert_receive :abdicated
+    assert_receive {:DOWN, ^crown_ref, :process, ^pid, :normal}, 1000
   end
 
   # --- oracle.handle_info ---

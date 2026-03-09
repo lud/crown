@@ -1,0 +1,9 @@
+session_name: crown-demo
+windows:
+  - window_name: cluster
+    layout: tiled
+    panes:
+      - elixir examples/lease_server.exs
+      - elixir --name demo-1@127.0.0.1 -S mix run examples/demo.exs
+      - elixir --name demo-2@127.0.0.1 -S mix run examples/demo.exs
+      - elixir --name demo-3@127.0.0.1 -S mix run examples/demo.exs

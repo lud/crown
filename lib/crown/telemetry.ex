@@ -14,12 +14,13 @@ defmodule Crown.Telemetry do
   ## Events
 
       [:crown, :process,    :initialized]   # GenServer init complete
-      [:crown, :process,    :terminated]    # GenServer terminate/2 called
+      [:crown, :process,    :terminating]    # GenServer terminate/2 called
 
       [:crown, :leadership, :claimed]       # Oracle.claim returned {true, ...}
       [:crown, :leadership, :rejected]      # Oracle.claim returned {false, ...}
       [:crown, :leadership, :refreshed]     # Oracle.refresh returned {true, ...}
       [:crown, :leadership, :lost]          # Oracle.refresh returned {false, ...}
+      [:crown, :leadership, :conflict]      # :global name conflict resolved against us
 
       [:crown, :monitor,    :started]       # :global found leader, monitor established
       [:crown, :monitor,    :failed]        # :global returned :undefined (retry scheduled)
@@ -45,11 +46,12 @@ defmodule Crown.Telemetry do
 
   @events [
     [:crown, :process, :initialized],
-    [:crown, :process, :terminated],
+    [:crown, :process, :terminating],
     [:crown, :leadership, :claimed],
     [:crown, :leadership, :rejected],
     [:crown, :leadership, :refreshed],
     [:crown, :leadership, :lost],
+    [:crown, :leadership, :conflict],
     [:crown, :monitor, :started],
     [:crown, :monitor, :failed],
     [:crown, :monitor, :timeout],
@@ -59,6 +61,6 @@ defmodule Crown.Telemetry do
     [:crown, :child, :exited]
   ]
 
-  @doc "Returns the list of all 13 Crown telemetry event names."
+  @doc "Returns the list of all Crown telemetry event names."
   def events, do: @events
 end
