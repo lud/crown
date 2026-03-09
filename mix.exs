@@ -1,15 +1,32 @@
 defmodule Crown.MixProject do
   use Mix.Project
 
+  @version "0.1.0"
+  @source_url "https://github.com/lud/crown"
+
   def project do
     [
       app: :crown,
-      version: "0.1.0",
+      version: @version,
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      elixirc_paths: elixirc_paths(Mix.env()),
+      deps: deps(),
+      description: "A leader election and supervisor library for Elixir, using external oracles",
+      package: package(),
+      source_url: @source_url
     ]
   end
+
+  defp package do
+    [
+      licenses: ["Apache-2.0"],
+      links: %{"GitHub" => @source_url}
+    ]
+  end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
 
   # Run "mix help compile.app" to learn about applications.
   def application do
@@ -21,8 +38,10 @@ defmodule Crown.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      # {:dep_from_hexpm, "~> 0.3.0"},
-      # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
+      {:nimble_options, "~> 1.0"},
+      {:telemetry, "~> 1.0"},
+      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
+      {:mox, "~> 1.0", only: :test}
     ]
   end
 end
