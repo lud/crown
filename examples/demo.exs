@@ -96,12 +96,12 @@ defmodule Demo.LeaderWorker do
 
     remaining =
       try do
-
-      c = File.read!("/tmp/remaining")
-       String.to_integer(c)
+        c = File.read!("/tmp/remaining")
+        String.to_integer(c)
       rescue
-        e ->Logger.error("could not read crash countdown value: #{inspect Exception.message e}")
-        20
+        e ->
+          Logger.error("could not read crash countdown value: #{inspect(Exception.message(e))}")
+          20
       end
 
     {:ok, _remaining = remaining}
