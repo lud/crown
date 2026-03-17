@@ -26,31 +26,6 @@ defmodule CrownTest do
   defp assert_leader(pid_or_name), do: assert(Crown.leader?(pid_or_name))
   defp refute_leader(pid_or_name), do: refute(Crown.leader?(pid_or_name))
 
-  defp await_monitoring(crown_name, target_pid, timeout \\ 1000) do
-    await_monitoring(crown_name, target_pid, timeout, timeout)
-  end
-
-  defp await_monitoring(crown_name, target_pid, timeout, original_timeout) when timeout <= 0 do
-    crown_pid = Process.whereis(crown_name)
-
-    flunk(
-      "expected #{inspect(crown_pid)} to be monitoring #{inspect(target_pid)} within #{original_timeout}ms"
-    )
-  end
-
-  defp await_monitoring(crown_name, target_pid, timeout, original_timeout) do
-    crown_pid = Process.whereis(crown_name)
-    {:monitored_by, monitored_by} = Process.info(target_pid, :monitored_by)
-
-    if crown_pid in monitored_by do
-      true
-    else
-      decr = 100
-      Process.sleep(decr)
-      await_monitoring(crown_name, target_pid, timeout - decr, original_timeout)
-    end
-  end
-
   # --- Existing passing test ---
 
   test "starts the process, inits the oracle, claims the crown and starts the child" do
