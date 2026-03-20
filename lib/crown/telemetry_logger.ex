@@ -104,12 +104,7 @@ defmodule Crown.TelemetryLogger do
 
   # -- Leadership --------------------------------------------------------------
 
-  def handle_event(
-        [:crown, :leadership, :claimed] = p,
-        _,
-        %{name: name, refresh_delay: delay},
-        _
-      ) do
+  def handle_event([:crown, :leadership, :claimed] = p, _, %{name: name, refresh_delay: delay}, _) do
     log(p, "[crown] #{name} elected as leader on node #{node()}", %{
       crown_name: name,
       refresh_delay: delay
@@ -203,12 +198,7 @@ defmodule Crown.TelemetryLogger do
     log(p, "[crown] #{name} stopped #{kind} child", %{crown_name: name, kind: kind})
   end
 
-  def handle_event(
-        [:crown, :child, :exited] = p,
-        _,
-        %{name: name, kind: kind, reason: reason},
-        _
-      ) do
+  def handle_event([:crown, :child, :exited] = p, _, %{name: name, kind: kind, reason: reason}, _) do
     log(p, "[crown] #{name} #{kind} child crashed: #{inspect(reason)}", %{
       crown_name: name,
       kind: kind,

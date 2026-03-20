@@ -36,8 +36,13 @@ defmodule Crown.MixProject do
     ]
   end
 
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
-  defp elixirc_paths(_), do: ["lib"]
+  defp elixirc_paths(:test) do
+    ["lib", "test/support"]
+  end
+
+  defp elixirc_paths(_) do
+    ["lib"]
+  end
 
   # Run "mix help compile.app" to learn about applications.
   def application do
@@ -66,7 +71,8 @@ defmodule Crown.MixProject do
       {:credo, ">= 0.0.0", only: [:dev, :test], runtime: false},
       {:ex_check, ">= 0.0.0", only: [:dev, :test], runtime: false},
       {:mix_audit, ">= 0.0.0", only: [:dev, :test], runtime: false},
-      {:readmix, ">= 0.0.0", only: [:dev, :test], runtime: false}
+      {:readmix, ">= 0.0.0", only: [:dev, :test], runtime: false},
+      {:quokka, ">= 0.0.0", only: [:dev, :test], runtime: false}
     ]
   end
 

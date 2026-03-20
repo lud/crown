@@ -20,9 +20,11 @@ defmodule Crown.Oracles.PostgresLease do
 
   """
 
-  require Logger
-
   @behaviour Crown.Oracle
+
+  alias Ecto.Adapters.SQL
+
+  require Logger
 
   defstruct [:repo, :lock_name, :holder, :duration, :refresh_delay]
 
@@ -51,13 +53,13 @@ defmodule Crown.Oracles.PostgresLease do
   @impl Crown.Oracle
   def init(opts) do
     repo = Keyword.fetch!(opts, :repo)
-    lock_name = Keyword.fetch!(opts, :crown_name) |> Atom.to_string()
+    lock_name = Atom.to_string(Keyword.fetch!(opts, :crown_name))
     duration = Keyword.get(opts, :duration, 30)
-    holder = node() |> Atom.to_string()
+    holder = Atom.to_string(node())
     refresh_delay = div(duration * 1000, 2)
 
     Logger.debug("initialize table#{@table}", node: node())
-    {:ok, _} = Ecto.Adapters.SQL.query(repo, @create_table_sql)
+    {:ok, _} = SQL.query(repo, @create_table_sql)
 
     state = %__MODULE__{
       repo: repo,
@@ -71,21 +73,25 @@ defmodule Crown.Oracles.PostgresLease do
   end
 
   @impl Crown.Oracle
-  def claim(state), do: do_upsert(state)
+  def claim(state) do
+    do_upsert(state)
+  end
 
   @impl Crown.Oracle
-  def refresh(state), do: do_upsert(state)
+  def refresh(state) do
+    do_upsert(state)
+  end
 
   @impl Crown.Oracle
   def abdicate(state) do
     %__MODULE__{repo: repo, lock_name: lock_name, holder: holder} = state
-    _ = Ecto.Adapters.SQL.query!(repo, @delete_sql, [lock_name, holder])
+    _ = SQL.query!(repo, @delete_sql, [lock_name, holder])
     :ok
   end
 
   @doc "Drops the leases table. Useful for test cleanup."
   def drop_leases_table(repo) do
-    _ = Ecto.Adapters.SQL.query!(repo, "DROP TABLE IF EXISTS #{@table}")
+    _ = SQL.query!(repo, "DROP TABLE IF EXISTS #{@table}")
     :ok
   end
 
@@ -98,7 +104,7 @@ defmodule Crown.Oracles.PostgresLease do
       refresh_delay: refresh_delay
     } = state
 
-    result = Ecto.Adapters.SQL.query!(repo, @upsert_sql, [lock_name, holder, duration])
+    result = SQL.query!(repo, @upsert_sql, [lock_name, holder, duration])
 
     case result do
       %{num_rows: n, rows: [[^holder] | _]} when n >= 1 ->

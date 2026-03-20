@@ -1,12 +1,15 @@
 defmodule Crown.TelemetryLoggerTest do
   use ExUnit.Case, async: false
-  import Mox
+
   import ExUnit.CaptureLog
+  import Mox
 
   setup :set_mox_global
   setup :verify_on_exit!
 
-  defp unique_name, do: :"crown_tlog_#{:erlang.unique_integer([:positive])}"
+  defp unique_name do
+    :"crown_tlog_#{:erlang.unique_integer([:positive])}"
+  end
 
   defp stop_and_wait(pid) do
     ref = Process.monitor(pid)
@@ -27,7 +30,10 @@ defmodule Crown.TelemetryLoggerTest do
     if crown_pid in monitored_by do
       true
     else
-      if timeout <= 0, do: flunk("monitoring not established in time")
+      if timeout <= 0 do
+        flunk("monitoring not established in time")
+      end
+
       Process.sleep(50)
       await_monitoring(crown_name, target_pid, timeout - 50)
     end

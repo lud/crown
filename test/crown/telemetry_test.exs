@@ -1,11 +1,14 @@
 defmodule Crown.TelemetryTest do
   use ExUnit.Case, async: false
+
   import Mox
 
   setup :set_mox_global
   setup :verify_on_exit!
 
-  defp unique_name, do: :"crown_tel_#{:erlang.unique_integer([:positive])}"
+  defp unique_name do
+    :"crown_tel_#{:erlang.unique_integer([:positive])}"
+  end
 
   defp stop_and_wait(pid) do
     ref = Process.monitor(pid)

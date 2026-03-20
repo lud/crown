@@ -64,5 +64,7 @@ defmodule Crown.Telemetry do
   ]
 
   @doc "Returns the list of all Crown telemetry event names."
-  def events, do: @events
+  def events do
+    @events
+  end
 end

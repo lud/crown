@@ -1,83 +1,81 @@
+options_schema =
+  NimbleOptions.new!(
+    name: [
+      type: :atom,
+      required: true,
+      doc: """
+      Atom used to register the process locally and, when leading, as
+      `{:global, {Crown, name}}` for cross-node discoverability.
+      """
+    ],
+    oracle: [
+      type: :mod_arg,
+      required: true,
+      doc: """
+      A `{module, opts}` tuple. `module` must implement `Crown.Oracle`.
+      `opts` are passed to `c:Crown.Oracle.init/1`.
+      """
+    ],
+    child_spec: [
+      type: :any,
+      required: true,
+      doc: """
+      Child spec to start when this node holds the crown. May be `nil`
+      if no child is needed (though Crown's main purpose is to supervise
+      a child). Accepts any value accepted by `Supervisor.child_spec/2`.
+      """
+    ],
+    follower_child_spec: [
+      type: :any,
+      default: nil,
+      doc: """
+      Child spec to start when this node does *not* hold the crown.
+      Defaults to `nil` (no follower child).
+      """
+    ],
+    claim_delay: [
+      type: :non_neg_integer,
+      default: 0,
+      doc: """
+      Milliseconds to wait after startup before the first claim attempt.
+      """
+    ],
+    monitor_delay: [
+      type: :non_neg_integer,
+      default: 5000,
+      doc: """
+      Milliseconds to wait between attempts to find and monitor the
+      current leader after a failed claim. The first attempt always
+      happens immediately (delay 0); subsequent retries use this value.
+      Useful in environments where the cluster takes time to form.
+      Defaults to 5000.
+      """
+    ],
+    monitor_timeout: [
+      type: :pos_integer,
+      default: 30_000,
+      doc: """
+      Maximum time in milliseconds to spend trying to find the leader
+      before giving up and attempting to claim again. Defaults to 30000.
+
+      This timeout is checked each time a `monitor_delay` tick fires,
+      so the actual elapsed time before a re-claim may exceed
+      `monitor_timeout` by up to one `monitor_delay` interval.
+      """
+    ],
+    monitor_leader: [
+      type: :boolean,
+      default: true,
+      doc: """
+      When `true`, nodes that fail to claim will monitor the current
+      leader and attempt to claim when it goes down. Set to `false` in
+      deployments where nodes cannot see each other and rely instead on
+      oracle `handle_info` callbacks to trigger claim attempts.
+      """
+    ]
+  )
+
 defmodule Crown do
-  use GenServer
-  require Logger
-  @gen_opts ~w(name timeout debug spawn_opt hibernate_after)a
-  @options_schema NimbleOptions.new!(
-                    name: [
-                      type: :atom,
-                      required: true,
-                      doc: """
-                      Atom used to register the process locally and, when leading, as
-                      `{:global, {Crown, name}}` for cross-node discoverability.
-                      """
-                    ],
-                    oracle: [
-                      type: :mod_arg,
-                      required: true,
-                      doc: """
-                      A `{module, opts}` tuple. `module` must implement `Crown.Oracle`.
-                      `opts` are passed to `c:Crown.Oracle.init/1`.
-                      """
-                    ],
-                    child_spec: [
-                      type: :any,
-                      required: true,
-                      doc: """
-                      Child spec to start when this node holds the crown. May be `nil`
-                      if no child is needed (though Crown's main purpose is to supervise
-                      a child). Accepts any value accepted by `Supervisor.child_spec/2`.
-                      """
-                    ],
-                    follower_child_spec: [
-                      type: :any,
-                      default: nil,
-                      doc: """
-                      Child spec to start when this node does *not* hold the crown.
-                      Defaults to `nil` (no follower child).
-                      """
-                    ],
-                    claim_delay: [
-                      type: :non_neg_integer,
-                      default: 0,
-                      doc: """
-                      Milliseconds to wait after startup before the first claim attempt.
-                      """
-                    ],
-                    monitor_delay: [
-                      type: :non_neg_integer,
-                      default: 5000,
-                      doc: """
-                      Milliseconds to wait between attempts to find and monitor the
-                      current leader after a failed claim. The first attempt always
-                      happens immediately (delay 0); subsequent retries use this value.
-                      Useful in environments where the cluster takes time to form.
-                      Defaults to 5000.
-                      """
-                    ],
-                    monitor_timeout: [
-                      type: :pos_integer,
-                      default: 30_000,
-                      doc: """
-                      Maximum time in milliseconds to spend trying to find the leader
-                      before giving up and attempting to claim again. Defaults to 30000.
-
-                      This timeout is checked each time a `monitor_delay` tick fires,
-                      so the actual elapsed time before a re-claim may exceed
-                      `monitor_timeout` by up to one `monitor_delay` interval.
-                      """
-                    ],
-                    monitor_leader: [
-                      type: :boolean,
-                      default: true,
-                      doc: """
-                      When `true`, nodes that fail to claim will monitor the current
-                      leader and attempt to claim when it goes down. Set to `false` in
-                      deployments where nodes cannot see each other and rely instead on
-                      oracle `handle_info` callbacks to trigger claim attempts.
-                      """
-                    ]
-                  )
-
   @moduledoc """
   Leader election and supervised child management backed by an external oracle.
 
@@ -107,7 +105,7 @@ defmodule Crown do
 
   ## Options
 
-  #{NimbleOptions.docs(@options_schema)}
+  #{NimbleOptions.docs(options_schema)}
 
   ## Telemetry
 
@@ -115,6 +113,13 @@ defmodule Crown do
   `attach_default_logger/1` for built-in logging or attach your own handlers.
   See `Crown.Telemetry` for the full list of events.
   """
+
+  use GenServer
+
+  require Logger
+
+  @gen_opts ~w(name timeout debug spawn_opt hibernate_after)a
+  @options_schema options_schema
 
   def child_spec(opts) do
     # Name is mandatory but we will the that be validated by the init callback.
@@ -159,7 +164,9 @@ defmodule Crown do
     Crown.TelemetryLogger.attach(filters)
   end
 
-  def global_name(name) when is_atom(name), do: {__MODULE__, name}
+  def global_name(name) when is_atom(name) do
+    {__MODULE__, name}
+  end
 
   defmodule State do
     @moduledoc false
@@ -189,9 +196,11 @@ defmodule Crown do
     name = Keyword.fetch!(opts, :name)
 
     ocl_opts =
-      if Keyword.keyword?(ocl_opts),
-        do: Keyword.put_new(ocl_opts, :crown_name, name),
-        else: ocl_opts
+      if Keyword.keyword?(ocl_opts) do
+        Keyword.put_new(ocl_opts, :crown_name, name)
+      else
+        ocl_opts
+      end
 
     case ocl_mod.init(ocl_opts) do
       {:ok, ocl_state} ->
@@ -315,7 +324,7 @@ defmodule Crown do
        when phase in [:leading, :following] do
     %State{sup: {_, kind}} = state
     telemetry_exec([:crown, :child, :exited], state, %{kind: kind, reason: reason})
-    state = %State{state | sup: :none}
+    state = %{state | sup: :none}
     state = clean_shutdown(state)
     true = state.phase == :finishing
 
@@ -357,7 +366,7 @@ defmodule Crown do
       {true, delay, state} ->
         :ok = global_register(state, :claim)
         state = put_phase(state, :leading)
-        state = %State{state | leader_node: node()}
+        state = %{state | leader_node: node()}
         telemetry_exec([:crown, :leadership, :claimed], state, %{refresh_delay: delay})
         state = set_timer(state, delay, :refresh_claim)
         ensure_child_started(state, :leader)
@@ -376,7 +385,7 @@ defmodule Crown do
         state
 
       :noproc ->
-        state = %State{state | leader_node: nil}
+        state = %{state | leader_node: nil}
 
         reclaim_after_abs = now_ms() + state.monitor_timeout
 
@@ -395,7 +404,7 @@ defmodule Crown do
         state
 
       :noproc ->
-        state = %State{state | leader_node: nil}
+        state = %{state | leader_node: nil}
         elapsed_ms = state.monitor_timeout - max(reclaim_after_abs - now_ms(), 0)
 
         if now_ms() >= reclaim_after_abs do
@@ -424,14 +433,14 @@ defmodule Crown do
 
     case state.monitor_leader? do
       false ->
-        {:monitoring, %State{state | leader_mref: :disabled}}
+        {:monitoring, %{state | leader_mref: :disabled}}
 
       _ ->
         case :global.whereis_name(global_name(name)) do
           pid when is_pid(pid) ->
             leader_mref = :erlang.monitor(:process, pid, tag: :LEADER_DOWN)
             leader_node = node(pid)
-            state = %State{state | leader_mref: leader_mref, leader_node: leader_node}
+            state = %{state | leader_mref: leader_mref, leader_node: leader_node}
 
             telemetry_exec([:crown, :monitor, :started], state, %{
               leader_pid: pid,
@@ -448,7 +457,7 @@ defmodule Crown do
 
   defp clear_leader_mref(%State{} = state) do
     true = is_reference(state.leader_mref)
-    %State{state | leader_mref: nil, leader_node: nil}
+    %{state | leader_mref: nil, leader_node: nil}
   end
 
   defp claim(%State{} = state) do
@@ -475,10 +484,10 @@ defmodule Crown do
   defp handle_claim_result(%State{} = state, result) do
     case result do
       {true, refresh_delay, ocl_state} ->
-        {true, refresh_delay, %State{state | ocl_state: ocl_state}}
+        {true, refresh_delay, %{state | ocl_state: ocl_state}}
 
       {false, ocl_state} ->
-        {false, %State{state | ocl_state: ocl_state}}
+        {false, %{state | ocl_state: ocl_state}}
     end
   end
 
@@ -511,7 +520,7 @@ defmodule Crown do
           {sup, kind}
       end
 
-    %State{state | sup: sup}
+    %{state | sup: sup}
   end
 
   defp ensure_child_started(%State{sup: {_, other_kind}} = state, kind) do
@@ -524,7 +533,7 @@ defmodule Crown do
     telemetry_exec([:crown, :child, :stopped], state, %{kind: kind})
     :ok = Supervisor.stop(sup)
     :ok = flush_exit(sup)
-    %State{state | sup: :none}
+    %{state | sup: :none}
   end
 
   defp maybe_teardown_child(%State{sup: :none} = state) do
@@ -597,7 +606,7 @@ defmodule Crown do
 
   defp set_timer(%State{} = state, delay, message) do
     nil = state.tref
-    %State{state | tref: start_timer(delay, message)}
+    %{state | tref: start_timer(delay, message)}
   end
 
   defp start_timer(:infinity, _msg) do
@@ -609,14 +618,16 @@ defmodule Crown do
   end
 
   defp consume_timer(%State{tref: tref} = state, tref) do
-    %State{state | tref: nil}
+    %{state | tref: nil}
   end
 
   defp put_phase(%State{} = state, phase) do
-    %State{state | phase: phase}
+    %{state | phase: phase}
   end
 
-  defp now_ms, do: System.system_time(:millisecond)
+  defp now_ms do
+    System.system_time(:millisecond)
+  end
 
   defp telemetry_exec(event, state, extra \\ %{}) do
     :telemetry.execute(event, %{}, Map.merge(telemetry_metadata(state), extra))

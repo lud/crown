@@ -1,5 +1,6 @@
 defmodule CrownTest do
   use ExUnit.Case, async: false
+
   import Mox
 
   setup :set_mox_global
@@ -7,7 +8,9 @@ defmodule CrownTest do
 
   # --- Helpers ---
 
-  defp unique_name, do: :"crown_#{:erlang.unique_integer([:positive])}"
+  defp unique_name do
+    :"crown_#{:erlang.unique_integer([:positive])}"
+  end
 
   defp stop_and_wait(pid) do
     ref = Process.monitor(pid)
@@ -23,8 +26,13 @@ defmodule CrownTest do
     pid
   end
 
-  defp assert_leader(pid_or_name), do: assert(Crown.leader?(pid_or_name))
-  defp refute_leader(pid_or_name), do: refute(Crown.leader?(pid_or_name))
+  defp assert_leader(pid_or_name) do
+    assert(Crown.leader?(pid_or_name))
+  end
+
+  defp refute_leader(pid_or_name) do
+    refute(Crown.leader?(pid_or_name))
+  end
 
   # --- Existing passing test ---
 
@@ -61,8 +69,7 @@ defmodule CrownTest do
   # --- Oracle initialization ---
 
   test "oracle.init returning {:error, reason} prevents Crown from starting" do
-    Crown.OracleMock
-    |> expect(:init, fn _ -> {:error, :some_reason} end)
+    expect(Crown.OracleMock, :init, fn _ -> {:error, :some_reason} end)
 
     assert {:error, :some_reason} =
              Crown.start_link(
@@ -73,8 +80,7 @@ defmodule CrownTest do
   end
 
   test "oracle.init returning :ignore is passed through" do
-    Crown.OracleMock
-    |> expect(:init, fn _ -> :ignore end)
+    expect(Crown.OracleMock, :init, fn _ -> :ignore end)
 
     assert :ignore =
              Crown.start_link(
@@ -649,8 +655,7 @@ defmodule CrownTest do
   test "stopping Crown before claim_delay fires shuts down cleanly" do
     parent = self()
 
-    Crown.OracleMock
-    |> expect(:init, fn _ ->
+    expect(Crown.OracleMock, :init, fn _ ->
       send(parent, :oracle_init_called)
       {:ok, :state}
     end)

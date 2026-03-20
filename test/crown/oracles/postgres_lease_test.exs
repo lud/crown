@@ -2,10 +2,13 @@ defmodule Crown.Oracles.PostgresLeaseTest do
   use ExUnit.Case, async: false
 
   alias Crown.Oracles.PostgresLease
+  alias Ecto.Adapters.SQL
 
   @repo Crown.TestRepo
 
-  defp unique_name, do: :"lease_#{:erlang.unique_integer([:positive])}"
+  defp unique_name do
+    :"lease_#{System.system_time(:microsecond)}"
+  end
 
   defp init_oracle(opts \\ []) do
     name = Keyword.get(opts, :name, unique_name())
@@ -16,13 +19,13 @@ defmodule Crown.Oracles.PostgresLeaseTest do
     state
   end
 
-  defp init_oracle_with_holder(holder, opts \\ []) do
+  defp init_oracle_with_holder(holder, opts) do
     state = init_oracle(opts)
-    %PostgresLease{state | holder: holder}
+    %{state | holder: holder}
   end
 
   defp insert_lease(lock_name, holder, expires_in_seconds) do
-    Ecto.Adapters.SQL.query!(
+    SQL.query!(
       @repo,
       """
       INSERT INTO crown_lease_v1 (lock_name, holder, expires_at)
@@ -34,7 +37,7 @@ defmodule Crown.Oracles.PostgresLeaseTest do
 
   defp get_lease(lock_name) do
     result =
-      Ecto.Adapters.SQL.query!(
+      SQL.query!(
         @repo,
         "SELECT holder, expires_at FROM crown_lease_v1 WHERE lock_name = $1",
         [Atom.to_string(lock_name)]
@@ -71,7 +74,7 @@ defmodule Crown.Oracles.PostgresLeaseTest do
 
   test "holder is node() as string" do
     {:ok, state} = PostgresLease.init(repo: @repo, crown_name: :test_holder)
-    assert state.holder == node() |> Atom.to_string()
+    assert state.holder == Atom.to_string(node())
   end
 
   # --- Claim ---
@@ -108,7 +111,7 @@ defmodule Crown.Oracles.PostgresLeaseTest do
 
     {holder, expires_at} = get_lease(name)
     assert holder == state.holder
-    assert DateTime.compare(expires_at, DateTime.utc_now()) == :gt
+    assert DateTime.after?(expires_at, DateTime.utc_now())
   end
 
   # --- Refresh ---
@@ -130,7 +133,7 @@ defmodule Crown.Oracles.PostgresLeaseTest do
     {true, _, _} = PostgresLease.refresh(state)
     {_, second_expires} = get_lease(name)
 
-    assert DateTime.compare(second_expires, first_expires) == :gt
+    assert DateTime.after?(second_expires, first_expires)
   end
 
   test "refresh/1 fails when someone else holds an active lease" do
@@ -146,7 +149,7 @@ defmodule Crown.Oracles.PostgresLeaseTest do
     # We claim first
     {true, _, state} = PostgresLease.claim(state)
     # Simulate expiry + another holder claiming
-    Ecto.Adapters.SQL.query!(
+    SQL.query!(
       @repo,
       "UPDATE crown_lease_v1 SET holder = $1, expires_at = NOW() + interval '60 seconds' WHERE lock_name = $2",
       ["other_node@host", Atom.to_string(name)]
@@ -220,7 +223,7 @@ defmodule Crown.Oracles.PostgresLeaseTest do
     {false, _} = PostgresLease.claim(state_b)
 
     # Simulate expiry
-    Ecto.Adapters.SQL.query!(
+    SQL.query!(
       @repo,
       "UPDATE crown_lease_v1 SET expires_at = NOW() - interval '1 second' WHERE lock_name = $1",
       [Atom.to_string(name)]
