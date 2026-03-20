@@ -39,7 +39,9 @@ defmodule Crown.Telemetry do
     * `:pid` — Crown process pid
     * `:phase` — current FSM phase
     * `:ocl_mod` — oracle module
-    * `:monitored_node` — the node being monitored or `nil`
+    * `:leader_node` — the leader node. The actual leader will report itself.
+      Other nodes will report the leader node if they managed to monitor it, or
+      `nil`.
 
   See the plan documentation for per-event extra fields.
   """

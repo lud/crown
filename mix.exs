@@ -11,6 +11,7 @@ defmodule Crown.MixProject do
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
+      aliases: aliases(),
       deps: deps(),
       description: "A leader election and supervisor library for Elixir, using external oracles",
       package: package(),
@@ -41,7 +42,8 @@ defmodule Crown.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger],
+      mod: {Crown.Application, []}
     ]
   end
 
@@ -52,6 +54,12 @@ defmodule Crown.MixProject do
       {:telemetry, "~> 1.0"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:mox, "~> 1.0", only: :test},
+      {:local_cluster, "~> 2.0", only: :test},
+
+      # Oracles dependencies
+      {:ecto_sql, ">= 3.0.0", optional: true},
+      {:ecto, ">= 3.0.0", optional: true},
+      {:postgrex, ">= 0.0.0", only: :test},
 
       # Dev
       {:dialyxir, ">= 0.0.0", only: [:dev, :test], runtime: false},
@@ -59,6 +67,12 @@ defmodule Crown.MixProject do
       {:ex_check, ">= 0.0.0", only: [:dev, :test], runtime: false},
       {:mix_audit, ">= 0.0.0", only: [:dev, :test], runtime: false},
       {:readmix, ">= 0.0.0", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  defp aliases do
+    [
+      test: "test --no-start"
     ]
   end
 

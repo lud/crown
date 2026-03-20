@@ -21,7 +21,13 @@ defmodule Crown.Oracle do
     Returns the same shape as `claim/1` and `refresh/1`.
   """
 
-  @doc "Initialize the oracle with the given options."
+  @doc """
+  Initialize the oracle with the given options.
+
+  When the options are a keyword list, Crown automatically injects a `:crown_name`
+  key (via `Keyword.put_new/3`) containing the Crown instance name atom. Oracles
+  can use this for namespacing (e.g. as a lock name).
+  """
   @callback init(opts :: keyword()) ::
               {:ok, state :: term()}
               | {:error, reason :: term()}

@@ -145,7 +145,14 @@ defmodule Crown do
   end
 
   def leader?(server) do
-    GenServer.call(server, :leader?)
+    case status(server) do
+      {:leading, _} -> true
+      {_, _} -> false
+    end
+  end
+
+  def status(server) do
+    GenServer.call(server, :status)
   end
 
   def attach_default_logger(filters \\ []) do
@@ -169,7 +176,7 @@ defmodule Crown do
       :monitor_timeout,
       :monitor_delay,
       :tref,
-      :monitored_node
+      :leader_node
     ]
     defstruct @enforce_keys
   end
@@ -179,11 +186,15 @@ defmodule Crown do
     Process.flag(:trap_exit, true)
     opts = NimbleOptions.validate!(opts, @options_schema)
     {ocl_mod, ocl_opts} = Keyword.fetch!(opts, :oracle)
+    name = Keyword.fetch!(opts, :name)
+
+    ocl_opts =
+      if Keyword.keyword?(ocl_opts),
+        do: Keyword.put_new(ocl_opts, :crown_name, name),
+        else: ocl_opts
 
     case ocl_mod.init(ocl_opts) do
       {:ok, ocl_state} ->
-        name = Keyword.fetch!(opts, :name)
-
         state = %State{
           ocl_state: ocl_state,
           phase: :init,
@@ -197,7 +208,7 @@ defmodule Crown do
           monitor_timeout: Keyword.fetch!(opts, :monitor_timeout),
           monitor_delay: Keyword.fetch!(opts, :monitor_delay),
           tref: nil,
-          monitored_node: nil
+          leader_node: nil
         }
 
         claim_delay = Keyword.fetch!(opts, :claim_delay)
@@ -218,9 +229,8 @@ defmodule Crown do
   end
 
   @impl GenServer
-  def handle_call(:leader?, _, state) do
-    reply = state.phase == :leading
-    {:reply, reply, state}
+  def handle_call(:status, _, state) do
+    {:reply, {state.phase, state.leader_node}, state}
   end
 
   @impl GenServer
@@ -293,8 +303,7 @@ defmodule Crown do
   end
 
   defp handle_event(:LEADER_DOWN, %State{phase: :following} = state) do
-    leader_node = state.monitored_node
-    state = %State{state | monitored_node: nil}
+    leader_node = state.leader_node
     telemetry_exec([:crown, :monitor, :leader_down], state, %{leader_node: leader_node})
     state = clear_leader_mref(state)
     state = claim_and_start_child(state)
@@ -348,7 +357,7 @@ defmodule Crown do
       {true, delay, state} ->
         :ok = global_register(state, :claim)
         state = put_phase(state, :leading)
-        state = %State{state | monitored_node: node()}
+        state = %State{state | leader_node: node()}
         telemetry_exec([:crown, :leadership, :claimed], state, %{refresh_delay: delay})
         state = set_timer(state, delay, :refresh_claim)
         ensure_child_started(state, :leader)
@@ -367,7 +376,7 @@ defmodule Crown do
         state
 
       :noproc ->
-        state = %State{state | monitored_node: nil}
+        state = %State{state | leader_node: nil}
 
         reclaim_after_abs = now_ms() + state.monitor_timeout
 
@@ -386,7 +395,7 @@ defmodule Crown do
         state
 
       :noproc ->
-        state = %State{state | monitored_node: nil}
+        state = %State{state | leader_node: nil}
         elapsed_ms = state.monitor_timeout - max(reclaim_after_abs - now_ms(), 0)
 
         if now_ms() >= reclaim_after_abs do
@@ -422,7 +431,7 @@ defmodule Crown do
           pid when is_pid(pid) ->
             leader_mref = :erlang.monitor(:process, pid, tag: :LEADER_DOWN)
             leader_node = node(pid)
-            state = %State{state | leader_mref: leader_mref, monitored_node: leader_node}
+            state = %State{state | leader_mref: leader_mref, leader_node: leader_node}
 
             telemetry_exec([:crown, :monitor, :started], state, %{
               leader_pid: pid,
@@ -439,7 +448,7 @@ defmodule Crown do
 
   defp clear_leader_mref(%State{} = state) do
     true = is_reference(state.leader_mref)
-    %State{state | leader_mref: nil}
+    %State{state | leader_mref: nil, leader_node: nil}
   end
 
   defp claim(%State{} = state) do
@@ -475,7 +484,6 @@ defmodule Crown do
 
   defp ensure_child_started(%State{sup: {_, kind}} = state, kind) do
     # Already started
-    Logger.debug("keeping child in #{inspect(kind)} alive")
     state
   end
 
@@ -620,7 +628,7 @@ defmodule Crown do
       pid: self(),
       phase: state.phase,
       ocl_mod: state.ocl_mod,
-      monitored_node: state.monitored_node
+      leader_node: state.leader_node
     }
   end
 end

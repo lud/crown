@@ -42,7 +42,7 @@ defmodule Crown.TelemetryTest do
     assert is_pid(metadata.pid)
     assert is_atom(metadata.phase)
     assert is_atom(metadata.ocl_mod)
-    assert Map.has_key?(metadata, :monitored_node)
+    assert Map.has_key?(metadata, :leader_node)
 
     for {key, expected} <- extra_checks do
       assert Map.fetch!(metadata, key) == expected,
@@ -88,7 +88,7 @@ defmodule Crown.TelemetryTest do
     assert_telemetry([:crown, :leadership, :claimed],
       phase: :leading,
       refresh_delay: :infinity,
-      monitored_node: node()
+      leader_node: node()
     )
 
     meta = assert_telemetry([:crown, :child, :started], phase: :leading, kind: :leader)
@@ -133,7 +133,7 @@ defmodule Crown.TelemetryTest do
 
     meta =
       assert_telemetry([:crown, :monitor, :started],
-        monitored_node: node(fake_leader)
+        leader_node: node(fake_leader)
       )
 
     assert meta.leader_pid == fake_leader
@@ -143,7 +143,7 @@ defmodule Crown.TelemetryTest do
     stop_and_wait(fake_leader)
     assert_receive :reclaimed, 1000
 
-    assert_telemetry([:crown, :monitor, :leader_down], monitored_node: nil)
+    assert_telemetry([:crown, :monitor, :leader_down], leader_node: node())
     assert_telemetry([:crown, :leadership, :claimed], phase: :leading)
 
     stop_and_wait(pid)
@@ -187,7 +187,7 @@ defmodule Crown.TelemetryTest do
     meta = assert_telemetry([:crown, :monitor, :failed])
     assert meta.retry_count == 0
     assert meta.remaining_ms == 120
-    assert meta.monitored_node == nil
+    assert meta.leader_node == nil
 
     # Retry(s) from retry_monitoring
     meta = assert_telemetry([:crown, :monitor, :failed])
@@ -272,7 +272,7 @@ defmodule Crown.TelemetryTest do
     assert_receive {:DOWN, ^crown_ref, :process, ^pid, :normal}, 500
 
     assert_telemetry([:crown, :process, :initialized])
-    assert_telemetry([:crown, :leadership, :claimed], monitored_node: node())
+    assert_telemetry([:crown, :leadership, :claimed], leader_node: node())
     assert_telemetry([:crown, :child, :started], kind: :leader)
     assert_telemetry([:crown, :leadership, :lost], phase: :leading)
     assert_telemetry([:crown, :child, :stopped], kind: :leader)

@@ -32,7 +32,8 @@ defmodule CrownTest do
     parent = self()
 
     Crown.OracleMock
-    |> expect(:init, fn [some_opt: "hello"] ->
+    |> expect(:init, fn opts ->
+      assert "hello" == Keyword.fetch!(opts, :some_opt)
       send(parent, :oracle_init_called)
       {:ok, :some_state}
     end)
