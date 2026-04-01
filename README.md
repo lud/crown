@@ -18,7 +18,7 @@
 ```elixir
 def deps do
   [
-    {:crown, "~> 0.1"},
+    {:crown, "~> 0.2"},
   ]
 end
 ```
