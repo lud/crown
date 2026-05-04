@@ -92,8 +92,6 @@ defmodule CrownTest do
              )
   end
 
-  # --- Claiming — success ---
-
   test "Crown is registered globally when leading" do
     parent = self()
     crown_name = unique_name()
@@ -140,8 +138,6 @@ defmodule CrownTest do
     assert_receive :claimed, 200
     stop_and_wait(pid)
   end
-
-  # --- Claiming — failure ---
 
   test "child is not started when claim fails" do
     parent = self()
@@ -219,7 +215,7 @@ defmodule CrownTest do
   test "when leader is not found, Crown retries after monitor_delay then claims after monitor_timeout" do
     parent = self()
     crown_name = unique_name()
-    # No fake leader — :global.whereis_name returns :undefined
+    # No fake leader, :global.whereis_name returns :undefined
 
     Crown.OracleMock
     |> expect(:init, fn _ -> {:ok, :state} end)
@@ -277,8 +273,6 @@ defmodule CrownTest do
     assert [] == pid |> Process.info(:monitors) |> elem(1)
     stop_and_wait(pid)
   end
-
-  # --- Monitoring — leader goes down ---
 
   test "when the monitored leader dies, Crown attempts to claim" do
     parent = self()
@@ -707,7 +701,8 @@ defmodule CrownTest do
     crown_name = unique_name()
     parent = self()
 
-    # Not stubbing or expecting :abdicate — any unexpected call will fail the test
+    # Not stubbing or expecting :abdicate, any unexpected call will fail the
+    # test
     Crown.OracleMockFull
     |> expect(:init, fn _ -> {:ok, :state} end)
     |> expect(:claim, fn :state ->

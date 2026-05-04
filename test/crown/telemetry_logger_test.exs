@@ -108,7 +108,7 @@ defmodule Crown.TelemetryLoggerTest do
         stop_and_wait(pid)
       end)
 
-    # initialized is :info, claimed is :info — both should be filtered out
+    # initialized is :info, claimed is :info, both should be filtered out
     refute log =~ "[crown] #{crown_name} initialized"
     refute log =~ "[crown] #{crown_name} elected"
   end

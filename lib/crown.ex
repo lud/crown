@@ -81,8 +81,8 @@ defmodule Crown do
 
   Crown is a `GenServer` that coordinates leader election across an Erlang
   cluster. Leadership authority is delegated to a pluggable oracle (see
-  `Crown.Oracle`) — typically a database lease or distributed lock — so that
-  only one node holds the crown at a time even during netsplits.
+  `Crown.Oracle`) talking to the external world: a database lease or distributed
+  lock. Only one node holds the crown at a time even during netsplits.
 
   The elected leader starts a supervised child (the `:child_spec` option) and
   keeps it running for as long as leadership is held. When leadership is lost

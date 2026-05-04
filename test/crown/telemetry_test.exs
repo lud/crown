@@ -161,7 +161,8 @@ defmodule Crown.TelemetryTest do
     parent = self()
     crown_name = unique_name()
     attach_telemetry("monitor-timeout")
-    # No fake leader — :global.whereis_name returns :undefined
+
+    # No fake leader, :global.whereis_name returns :undefined
 
     Crown.OracleMock
     |> expect(:init, fn _ -> {:ok, :state} end)
