@@ -13,8 +13,6 @@ defmodule Crown.Oracles.ObanPeer do
       `Oban.Peer.leader?/2`.
     * `:refresh_delay` (optional, default `5000`) - milliseconds until the next
       leadership check after a successful claim/refresh.
-    * `:peer_module` (optional, default `Oban.Peer`) - module implementing
-      `leader?/2`. Primarily useful for tests.
 
   ## Example
 
@@ -27,11 +25,10 @@ defmodule Crown.Oracles.ObanPeer do
   @behaviour Crown.Oracle
 
   @default_oban_name Oban
-  @default_peer_module Oban.Peer
   @default_timeout 5_000
-  @default_refresh_delay 5_000
+  @default_refresh_delay 15_000
 
-  defstruct [:oban_name, :timeout, :refresh_delay, :peer_module, :crown_name]
+  defstruct [:oban_name, :timeout, :refresh_delay, :crown_name]
 
   @impl Crown.Oracle
   def init(opts) do
@@ -45,7 +42,6 @@ defmodule Crown.Oracles.ObanPeer do
         oban_name: oban_name,
         timeout: timeout,
         refresh_delay: refresh_delay,
-        peer_module: Keyword.get(opts, :peer_module, @default_peer_module),
         crown_name: Keyword.get(opts, :crown_name)
       }
 
@@ -71,43 +67,31 @@ defmodule Crown.Oracles.ObanPeer do
     end
   end
 
-  defp oban_leader?(%__MODULE__{
-         peer_module: peer_module,
-         oban_name: oban_name,
-         timeout: timeout,
-         crown_name: crown_name
-       }) do
-    if function_exported?(peer_module, :leader?, 2) do
-      peer_module.leader?(oban_name, timeout)
-    else
-      telemetry_exec([:crown, :oracle, :oban_peer_invalid_module], %{
-        crown_name: crown_name,
-        oban_name: oban_name,
-        peer_module: peer_module
-      })
-
-      false
-    end
+  defp oban_leader?(%__MODULE__{oban_name: oban_name, timeout: timeout, crown_name: crown_name}) do
+    Oban.Peer.leader?(oban_name, timeout)
   rescue
-    exception ->
-      telemetry_exec([:crown, :oracle, :oban_query_error], %{
+    e ->
+      telemetry_exec([:crown, :oracle, :oban, :query_error], %{
         crown_name: crown_name,
         oban_name: oban_name,
-        error: Exception.message(exception)
+        kind: :error,
+        reason: e
       })
 
       false
   catch
-    :exit, reason ->
-      telemetry_exec([:crown, :oracle, :oban_query_exit], %{
+    kind, reason ->
+      telemetry_exec([:crown, :oracle, :oban, :query_error], %{
         crown_name: crown_name,
         oban_name: oban_name,
+        kind: kind,
         reason: reason
       })
 
       false
   end
 
+  @compile {:inline, telemetry_exec: 2}
   defp telemetry_exec(event, metadata) do
     :telemetry.execute(event, %{}, metadata)
   end

@@ -625,6 +625,7 @@ defmodule Crown do
     System.system_time(:millisecond)
   end
 
+  @compile {:inline, telemetry_exec: 2}
   defp telemetry_exec(event, state, extra \\ %{}) do
     :telemetry.execute(event, %{}, Map.merge(telemetry_metadata(state), extra))
   end

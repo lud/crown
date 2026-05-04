@@ -119,6 +119,7 @@ defmodule Crown.Oracles.PostgresLease do
     end
   end
 
+  @compile {:inline, telemetry_exec: 2}
   defp telemetry_exec(event, metadata) do
     :telemetry.execute(event, %{}, metadata)
   end

@@ -34,7 +34,7 @@ defmodule Crown.TelemetryTest do
     :ok =
       :telemetry.attach_many(
         "#{test_name}-#{:erlang.unique_integer([:positive])}",
-        Crown.Telemetry.events(),
+        Crown.TelemetryLogger.events(),
         handler,
         nil
       )
@@ -353,23 +353,28 @@ defmodule Crown.TelemetryTest do
   # --- Crown.Telemetry.events/0 ---
 
   test "Crown.Telemetry.events/0 returns all 16 event names" do
-    events = Crown.Telemetry.events()
-    assert length(events) == 16
-    assert [:crown, :process, :initialized] in events
-    assert [:crown, :process, :terminating] in events
-    assert [:crown, :process, :unexpected_info] in events
-    assert [:crown, :leadership, :claimed] in events
-    assert [:crown, :leadership, :rejected] in events
-    assert [:crown, :leadership, :refreshed] in events
-    assert [:crown, :leadership, :lost] in events
-    assert [:crown, :leadership, :conflict] in events
-    assert [:crown, :leadership, :invalid_claim] in events
-    assert [:crown, :monitor, :started] in events
-    assert [:crown, :monitor, :failed] in events
-    assert [:crown, :monitor, :timeout] in events
-    assert [:crown, :monitor, :leader_down] in events
-    assert [:crown, :child, :started] in events
-    assert [:crown, :child, :stopped] in events
-    assert [:crown, :child, :exited] in events
+    events = Crown.TelemetryLogger.events()
+
+    assert Enum.sort([
+             [:crown, :process, :initialized],
+             [:crown, :process, :terminating],
+             [:crown, :process, :unexpected_info],
+             [:crown, :leadership, :claimed],
+             [:crown, :leadership, :rejected],
+             [:crown, :leadership, :refreshed],
+             [:crown, :leadership, :lost],
+             [:crown, :leadership, :conflict],
+             [:crown, :leadership, :invalid_claim],
+             [:crown, :monitor, :started],
+             [:crown, :monitor, :failed],
+             [:crown, :monitor, :timeout],
+             [:crown, :monitor, :leader_down],
+             [:crown, :child, :started],
+             [:crown, :child, :stopped],
+             [:crown, :child, :exited],
+             [:crown, :oracle, :oban, :query_error],
+             [:crown, :oracle, :postgres_lease, :table_initialized]
+           ]) ==
+             Enum.sort(events)
   end
 end

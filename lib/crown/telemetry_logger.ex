@@ -27,10 +27,8 @@ defmodule Crown.TelemetryLogger do
     [:crown, :child, :exited] => :error,
 
     # Oracle
-    [:crown, :oracle, :oban_peer_invalid_module] => :warning,
-    [:crown, :oracle, :oban_query_error] => :warning,
-    [:crown, :oracle, :oban_query_exit] => :warning,
-    [:crown, :oracle, :postgres_table_initialized] => :debug
+    [:crown, :oracle, :oban, :query_error] => :warning,
+    [:crown, :oracle, :postgres_lease, :table_initialized] => :debug
   }
 
   @moduledoc """
@@ -53,14 +51,18 @@ defmodule Crown.TelemetryLogger do
 
   @events events
 
-  defp events do
+  def events do
+    unquote(Map.keys(events))
+  end
+
+  defp events_levels do
     @events
   end
 
   def attach(filters \\ []) do
     :telemetry.attach_many(
       __MODULE__,
-      filter_events(events(), filters),
+      filter_events(events_levels(), filters),
       &__MODULE__.handle_event/4,
       []
     )
@@ -253,46 +255,20 @@ defmodule Crown.TelemetryLogger do
   # -- Oracle ------------------------------------------------------------------
 
   def handle_event(
-        [:crown, :oracle, :oban_peer_invalid_module] = p,
+        [:crown, :oracle, :oban, :query_error] = p,
         _,
-        %{oban_name: oban_name, peer_module: peer_module} = metadata,
+        %{oban_name: oban_name, kind: kind, reason: reason} = metadata,
         _
       ) do
     log(
       p,
-      "[crown] Oban oracle peer module #{inspect(peer_module)} does not export leader?/2 for #{inspect(oban_name)}",
+      "[crown] Oban oracle could not query leadership for #{inspect(oban_name)}: #{Exception.format_banner(kind, reason)}",
       maybe_put_crown_name(%{}, metadata)
     )
   end
 
   def handle_event(
-        [:crown, :oracle, :oban_query_error] = p,
-        _,
-        %{oban_name: oban_name, error: error} = metadata,
-        _
-      ) do
-    log(
-      p,
-      "[crown] Oban oracle could not query leadership for #{inspect(oban_name)}: #{error}",
-      maybe_put_crown_name(%{}, metadata)
-    )
-  end
-
-  def handle_event(
-        [:crown, :oracle, :oban_query_exit] = p,
-        _,
-        %{oban_name: oban_name, reason: reason} = metadata,
-        _
-      ) do
-    log(
-      p,
-      "[crown] Oban oracle leadership check exited for #{inspect(oban_name)}: #{inspect(reason)}",
-      maybe_put_crown_name(%{}, metadata)
-    )
-  end
-
-  def handle_event(
-        [:crown, :oracle, :postgres_table_initialized] = p,
+        [:crown, :oracle, :postgres_lease, :table_initialized] = p,
         _,
         %{table: table, lock_name: lock_name, repo: repo},
         _
@@ -332,7 +308,7 @@ defmodule Crown.TelemetryLogger do
   end
 
   defp log(prefix, message, metadata) do
-    level = Map.fetch!(events(), prefix)
+    level = Map.fetch!(events_levels(), prefix)
     Logger.log(level, message, metadata)
   end
 

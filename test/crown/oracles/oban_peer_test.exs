@@ -1,23 +1,18 @@
-defmodule Crown.Oracles.ObanPeerTest.PeerStub do
-  @moduledoc false
-
-  def leader?(_oban_name, _timeout) do
-    case Process.get(:peer_stub_result, false) do
-      {:raise, exception} -> raise exception
-      {:exit, reason} -> exit(reason)
-      result when is_boolean(result) -> result
-    end
-  end
-end
-
 defmodule Crown.Oracles.ObanPeerTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
+
+  import Mox
 
   alias Crown.Oracles.ObanPeer, as: ObanPeerOracle
-  alias Crown.Oracles.ObanPeerTest.PeerStub
+
+  setup :set_mox_global
+  setup :verify_on_exit!
 
   setup do
-    Process.delete(:peer_stub_result)
+    stub(Crown.MockObanPeer, :start_link, fn opts ->
+      Agent.start_link(fn -> nil end, name: opts[:name])
+    end)
+
     :ok
   end
 
@@ -26,8 +21,7 @@ defmodule Crown.Oracles.ObanPeerTest do
 
     assert state.oban_name == Oban
     assert state.timeout == 5_000
-    assert state.refresh_delay == 5_000
-    assert state.peer_module == Oban.Peer
+    assert state.refresh_delay == 15_000
   end
 
   test "init/1 accepts custom options" do
@@ -35,14 +29,12 @@ defmodule Crown.Oracles.ObanPeerTest do
              ObanPeerOracle.init(
                oban_name: :"Elixir.Oban.Private",
                timeout: 1_000,
-               refresh_delay: 250,
-               peer_module: PeerStub
+               refresh_delay: 250
              )
 
     assert state.oban_name == :"Elixir.Oban.Private"
     assert state.timeout == 1_000
     assert state.refresh_delay == 250
-    assert state.peer_module == PeerStub
   end
 
   test "init/1 validates timeout" do
@@ -55,45 +47,67 @@ defmodule Crown.Oracles.ObanPeerTest do
   end
 
   test "claim/1 succeeds when Oban peer is leader" do
-    Process.put(:peer_stub_result, true)
-    state = init_state()
+    expect(Crown.MockObanPeer, :leader?, fn _pid, _timeout -> true end)
+
+    oban_name = start_oban!()
+    state = init_state(oban_name)
 
     assert {true, 321, ^state} = ObanPeerOracle.claim(state)
   end
 
   test "claim/1 fails when Oban peer is not leader" do
-    Process.put(:peer_stub_result, false)
-    state = init_state()
+    expect(Crown.MockObanPeer, :leader?, fn _pid, _timeout -> false end)
+
+    oban_name = start_oban!()
+    state = init_state(oban_name)
 
     assert {false, ^state} = ObanPeerOracle.claim(state)
   end
 
   test "refresh/1 mirrors claim behavior" do
-    state = init_state()
+    expect(Crown.MockObanPeer, :leader?, fn _pid, _timeout -> true end)
+    expect(Crown.MockObanPeer, :leader?, fn _pid, _timeout -> false end)
 
-    Process.put(:peer_stub_result, true)
+    oban_name = start_oban!()
+    state = init_state(oban_name)
+
     assert {true, 321, ^state} = ObanPeerOracle.refresh(state)
-
-    Process.put(:peer_stub_result, false)
     assert {false, ^state} = ObanPeerOracle.refresh(state)
   end
 
-  test "claim/1 fails safely when peer module raises" do
-    Process.put(:peer_stub_result, {:raise, RuntimeError.exception("boom")})
-    state = init_state()
+  test "claim/1 fails safely when peer raises" do
+    expect(Crown.MockObanPeer, :leader?, fn _pid, _timeout ->
+      raise RuntimeError, "boom"
+    end)
+
+    oban_name = start_oban!()
+    state = init_state(oban_name)
 
     assert {false, ^state} = ObanPeerOracle.claim(state)
   end
 
-  test "claim/1 fails safely when peer module exits" do
-    Process.put(:peer_stub_result, {:exit, :noproc})
-    state = init_state()
+  test "claim/1 fails safely when peer exits" do
+    expect(Crown.MockObanPeer, :leader?, fn _pid, _timeout -> exit(:noproc) end)
+
+    oban_name = start_oban!()
+    state = init_state(oban_name)
 
     assert {false, ^state} = ObanPeerOracle.claim(state)
   end
 
-  defp init_state do
-    assert {:ok, state} = ObanPeerOracle.init(peer_module: PeerStub, refresh_delay: 321)
+  defp start_oban! do
+    name = :"TestOban#{System.unique_integer([:positive])}"
+
+    start_supervised!(
+      {Oban,
+       name: name, repo: Crown.TestRepo, peer: Crown.MockObanPeer, queues: false, plugins: []}
+    )
+
+    name
+  end
+
+  defp init_state(oban_name) do
+    assert {:ok, state} = ObanPeerOracle.init(oban_name: oban_name, refresh_delay: 321)
     state
   end
 end
