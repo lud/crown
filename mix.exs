@@ -64,6 +64,7 @@ defmodule Crown.MixProject do
       # Oracles dependencies
       {:ecto_sql, ">= 3.0.0", optional: true},
       {:ecto, ">= 3.0.0", optional: true},
+      {:oban, "~> 2.22", optional: true},
       {:postgrex, ">= 0.0.0", only: :test},
 
       # Dev

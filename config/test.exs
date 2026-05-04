@@ -8,3 +8,5 @@ config :crown, Crown.TestRepo,
   port: 5432,
   pool_size: 10,
   log: false
+
+# config :logger, level: :warning
