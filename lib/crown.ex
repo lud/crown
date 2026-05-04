@@ -261,9 +261,46 @@ defmodule Crown do
     {:stop, :normal, _state} = handle_event(:global_conflict, state)
   end
 
-  def handle_info(message, state) do
-    telemetry_exec([:crown, :process, :unexpected_info], state, %{message: message})
+  def handle_info(message, %State{} = state) do
+    if function_exported?(state.ocl_mod, :handle_info, 2) do
+      dispatch_oracle_info(message, state)
+    else
+      telemetry_exec([:crown, :process, :unexpected_info], state, %{message: message})
+      {:noreply, state}
+    end
+  end
 
+  defp dispatch_oracle_info(message, %State{phase: :leading} = state) do
+    %{ocl_mod: ocl_mod, ocl_state: ocl_state} = state
+    state = cancel_timer(state)
+
+    case from_oracle_result(state, ocl_mod.handle_info(message, ocl_state)) do
+      {true, delay, state} -> {:noreply, on_refreshed(state, delay)}
+      {false, state} -> {:stop, :normal, on_leadership_lost(state)}
+    end
+  end
+
+  defp dispatch_oracle_info(message, %State{phase: :following} = state) do
+    %{ocl_mod: ocl_mod, ocl_state: ocl_state} = state
+
+    case from_oracle_result(state, ocl_mod.handle_info(message, ocl_state)) do
+      {true, _delay, state} when is_reference(state.leader_mref) ->
+        telemetry_exec([:crown, :leadership, :duplicate_leader], state, %{
+          leader_node: state.leader_node
+        })
+
+        exit(:duplicate_leader)
+
+      {true, delay, state} ->
+        state = cancel_timer(state)
+        {:noreply, on_claimed(state, delay)}
+
+      {false, state} ->
+        {:noreply, state}
+    end
+  end
+
+  defp dispatch_oracle_info(_message, state) do
     {:noreply, state}
   end
 
@@ -281,18 +318,8 @@ defmodule Crown do
 
   defp handle_event(:refresh_claim, %State{phase: :leading, tref: nil} = state) do
     case refresh(state) do
-      {true, delay, state} ->
-        state = put_phase(state, :leading)
-        telemetry_exec([:crown, :leadership, :refreshed], state, %{refresh_delay: delay})
-        state = set_timer(state, delay, :refresh_claim)
-        state = ensure_child_started(state, :leader)
-        {:ok, state}
-
-      {false, state} ->
-        telemetry_exec([:crown, :leadership, :lost], state)
-        state = clean_shutdown(state)
-        true = state.phase == :finishing
-        {:stop, :normal, state}
+      {true, delay, state} -> {:ok, on_refreshed(state, delay)}
+      {false, state} -> {:stop, :normal, on_leadership_lost(state)}
     end
   end
 
@@ -358,12 +385,7 @@ defmodule Crown do
   defp claim_and_start_child(state) do
     case claim(state) do
       {true, delay, state} ->
-        :ok = global_register(state, :claim)
-        state = put_phase(state, :leading)
-        state = %{state | leader_node: node()}
-        telemetry_exec([:crown, :leadership, :claimed], state, %{refresh_delay: delay})
-        state = set_timer(state, delay, :refresh_claim)
-        ensure_child_started(state, :leader)
+        on_claimed(state, delay)
 
       {false, state} ->
         state = put_phase(state, :following)
@@ -371,6 +393,29 @@ defmodule Crown do
         state = ensure_child_started(state, :follower)
         start_monitoring(state)
     end
+  end
+
+  defp on_claimed(state, delay) do
+    :ok = global_register(state, :claim)
+    state = put_phase(state, :leading)
+    state = %{state | leader_node: node()}
+    telemetry_exec([:crown, :leadership, :claimed], state, %{refresh_delay: delay})
+    state = set_timer(state, delay, :refresh_claim)
+    ensure_child_started(state, :leader)
+  end
+
+  defp on_refreshed(state, delay) do
+    state = put_phase(state, :leading)
+    telemetry_exec([:crown, :leadership, :refreshed], state, %{refresh_delay: delay})
+    state = set_timer(state, delay, :refresh_claim)
+    ensure_child_started(state, :leader)
+  end
+
+  defp on_leadership_lost(state) do
+    telemetry_exec([:crown, :leadership, :lost], state)
+    state = clean_shutdown(state)
+    true = state.phase == :finishing
+    state
   end
 
   defp start_monitoring(%State{} = state) do
@@ -456,12 +501,12 @@ defmodule Crown do
 
   defp claim(%State{} = state) do
     %{ocl_mod: ocl_mod, ocl_state: ocl_state} = state
-    handle_claim_result(state, ocl_mod.claim(ocl_state))
+    from_oracle_result(state, ocl_mod.claim(ocl_state))
   end
 
   defp refresh(%State{} = state) do
     %{ocl_mod: ocl_mod, ocl_state: ocl_state} = state
-    handle_claim_result(state, ocl_mod.refresh(ocl_state))
+    from_oracle_result(state, ocl_mod.refresh(ocl_state))
   end
 
   defp abdicate(%State{} = state) do
@@ -475,7 +520,7 @@ defmodule Crown do
     end
   end
 
-  defp handle_claim_result(%State{} = state, result) do
+  defp from_oracle_result(%State{} = state, result) do
     case result do
       {true, refresh_delay, ocl_state} ->
         {true, refresh_delay, %{state | ocl_state: ocl_state}}
@@ -598,6 +643,22 @@ defmodule Crown do
       end
 
     put_phase(state, :finishing)
+  end
+
+  defp cancel_timer(%State{tref: nil} = state) do
+    state
+  end
+
+  defp cancel_timer(%State{tref: tref} = state) do
+    _ = :erlang.cancel_timer(tref)
+
+    receive do
+      {:timeout, ^tref, _} -> :ok
+    after
+      0 -> :ok
+    end
+
+    %{state | tref: nil}
   end
 
   defp set_timer(%State{} = state, delay, message) do

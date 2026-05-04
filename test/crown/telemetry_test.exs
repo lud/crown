@@ -356,24 +356,25 @@ defmodule Crown.TelemetryTest do
     events = Crown.TelemetryLogger.events()
 
     assert Enum.sort([
-             [:crown, :process, :initialized],
-             [:crown, :process, :terminating],
-             [:crown, :process, :unexpected_info],
-             [:crown, :leadership, :claimed],
-             [:crown, :leadership, :rejected],
-             [:crown, :leadership, :refreshed],
-             [:crown, :leadership, :lost],
-             [:crown, :leadership, :conflict],
-             [:crown, :leadership, :invalid_claim],
-             [:crown, :monitor, :started],
-             [:crown, :monitor, :failed],
-             [:crown, :monitor, :timeout],
-             [:crown, :monitor, :leader_down],
+             [:crown, :child, :exited],
              [:crown, :child, :started],
              [:crown, :child, :stopped],
-             [:crown, :child, :exited],
+             [:crown, :leadership, :claimed],
+             [:crown, :leadership, :conflict],
+             [:crown, :leadership, :duplicate_leader],
+             [:crown, :leadership, :invalid_claim],
+             [:crown, :leadership, :lost],
+             [:crown, :leadership, :refreshed],
+             [:crown, :leadership, :rejected],
+             [:crown, :monitor, :failed],
+             [:crown, :monitor, :leader_down],
+             [:crown, :monitor, :started],
+             [:crown, :monitor, :timeout],
              [:crown, :oracle, :oban, :query_error],
-             [:crown, :oracle, :postgres_lease, :table_initialized]
+             [:crown, :oracle, :postgres_lease, :table_initialized],
+             [:crown, :process, :initialized],
+             [:crown, :process, :terminating],
+             [:crown, :process, :unexpected_info]
            ]) ==
              Enum.sort(events)
   end

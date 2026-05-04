@@ -883,8 +883,65 @@ defmodule CrownTest do
 
   # --- oracle.handle_info ---
 
-  @tag :skip
-  test "unknown message is forwarded to oracle.handle_info" do
+  test "oracle.handle_info: following + monitoring active + true result → exits :duplicate_leader" do
+    parent = self()
+    crown_name = unique_name()
+    _fake_leader = start_fake_leader(crown_name)
+
+    Crown.OracleMockFull
+    |> expect(:init, fn _ -> {:ok, :state} end)
+    |> expect(:claim, fn :state ->
+      send(parent, :claimed)
+      {false, :state}
+    end)
+    |> expect(:handle_info, fn :claim_signal, :state -> {true, :infinity, :state} end)
+
+    {:ok, pid} =
+      Crown.start(
+        name: crown_name,
+        oracle: {Crown.OracleMockFull, []},
+        child_spec: nil,
+        follower_child_spec: {Agent, fn -> send(parent, {:follower_pid, self()}) end},
+        monitor_delay: 0
+      )
+
+    assert_receive :claimed
+    assert_receive {:follower_pid, follower_pid}
+    follower_ref = Process.monitor(follower_pid)
+    crown_ref = Process.monitor(pid)
+    send(pid, :claim_signal)
+    assert_receive {:DOWN, ^crown_ref, :process, ^pid, :duplicate_leader}, 500
+    assert_receive {:DOWN, ^follower_ref, :process, ^follower_pid, :shutdown}, 500
+  end
+
+  test "oracle.handle_info: following + monitoring disabled + true result → becomes leader" do
+    parent = self()
+    crown_name = unique_name()
+
+    Crown.OracleMockFull
+    |> expect(:init, fn _ -> {:ok, :state} end)
+    |> expect(:claim, fn :state ->
+      send(parent, :claim_rejected)
+      {false, :state}
+    end)
+    |> expect(:handle_info, fn :claim_signal, :state -> {true, :infinity, :state} end)
+    |> expect(:abdicate, fn :state -> :ok end)
+
+    {:ok, pid} =
+      Crown.start_link(
+        name: crown_name,
+        oracle: {Crown.OracleMockFull, []},
+        child_spec: {Agent, fn -> send(parent, :leader_started) end},
+        monitor_leader: false
+      )
+
+    assert_receive :claim_rejected
+    send(pid, :claim_signal)
+    assert_receive :leader_started, 500
+    stop_and_wait(pid)
+  end
+
+  test "oracle.handle_info: following + false result → follower child stays alive" do
     parent = self()
     crown_name = unique_name()
     _fake_leader = start_fake_leader(crown_name)
@@ -892,7 +949,7 @@ defmodule CrownTest do
     Crown.OracleMockFull
     |> expect(:init, fn _ -> {:ok, :state} end)
     |> expect(:claim, fn :state -> {false, :state} end)
-    |> expect(:handle_info, fn :some_external_message, :state ->
+    |> expect(:handle_info, fn :some_signal, :state ->
       send(parent, :handle_info_called)
       {false, :state}
     end)
@@ -902,80 +959,98 @@ defmodule CrownTest do
         name: crown_name,
         oracle: {Crown.OracleMockFull, []},
         child_spec: nil,
+        follower_child_spec: {Agent, fn -> send(parent, {:follower_pid, self()}) end},
         monitor_delay: 0
       )
 
     refute_leader(pid)
-    send(pid, :some_external_message)
+    assert_receive {:follower_pid, follower_pid}
+    follower_ref = Process.monitor(follower_pid)
+
+    send(pid, :some_signal)
     assert_receive :handle_info_called, 500
+    refute_receive {:DOWN, ^follower_ref, :process, ^follower_pid, _}, 200
+
     stop_and_wait(pid)
   end
 
-  @tag :skip
-  test "oracle.handle_info returning {true, refresh_delay, state} makes Crown become leader" do
+  test "oracle.handle_info: leading + true result → remains leader, child stays alive" do
     parent = self()
     crown_name = unique_name()
-    _fake_leader = start_fake_leader(crown_name)
 
     Crown.OracleMockFull
     |> expect(:init, fn _ -> {:ok, :state} end)
-    |> expect(:claim, fn :state -> {false, :state} end)
-    |> expect(:handle_info, fn :claim_now, :state ->
+    |> expect(:claim, fn :state ->
+      send(parent, :claimed)
       {true, :infinity, :state}
     end)
+    |> expect(:handle_info, fn :refresh_signal, :state -> {true, :infinity, :state} end)
+    |> expect(:abdicate, fn :state -> :ok end)
 
     {:ok, pid} =
       Crown.start_link(
         name: crown_name,
         oracle: {Crown.OracleMockFull, []},
-        child_spec: {Agent, fn -> send(parent, :leader_started) end},
-        monitor_delay: 0
+        child_spec: {Agent, fn -> send(parent, {:child_pid, self()}) end}
       )
 
-    refute_leader(pid)
-    send(pid, :claim_now)
-    assert_receive :leader_started, 500
+    assert_receive :claimed
+    assert_receive {:child_pid, child_pid}
+    child_ref = Process.monitor(child_pid)
+
+    send(pid, :refresh_signal)
+    assert_leader(pid)
+    refute_receive {:DOWN, ^child_ref, :process, ^child_pid, _}, 100
+
     stop_and_wait(pid)
   end
 
-  @tag :skip
-  test "oracle.handle_info returning {false, state} keeps Crown in its current state" do
+  test "oracle.handle_info: leading + false result → gives up leadership" do
     parent = self()
     crown_name = unique_name()
-    _fake_leader = start_fake_leader(crown_name)
 
     Crown.OracleMockFull
     |> expect(:init, fn _ -> {:ok, :state} end)
-    |> expect(:claim, fn :state -> {false, :state} end)
-    |> expect(:handle_info, fn :claim_now, :state ->
-      send(parent, :handle_info_returned_false)
-      {false, :state}
+    |> expect(:claim, fn :state ->
+      send(parent, :claimed)
+      {true, :infinity, :state}
     end)
+    |> expect(:handle_info, fn :abdicate_signal, :state -> {false, :state} end)
+    |> expect(:abdicate, fn :state -> :ok end)
 
     {:ok, pid} =
       Crown.start_link(
         name: crown_name,
         oracle: {Crown.OracleMockFull, []},
-        child_spec: {Agent, fn -> send(parent, :leader_started) end},
-        monitor_delay: 0
+        child_spec: nil
       )
 
-    refute_leader(pid)
-    send(pid, :claim_now)
-    assert_receive :handle_info_returned_false, 500
-    refute_receive :leader_started, 200
-    stop_and_wait(pid)
+    assert_receive :claimed
+    crown_ref = Process.monitor(pid)
+    send(pid, :abdicate_signal)
+    assert_receive {:DOWN, ^crown_ref, :process, ^pid, :normal}, 500
   end
 
-  @tag :skip
-  test "unknown messages are silently dropped when oracle.handle_info is not exported" do
+  test "oracle.handle_info not exported → message dropped with telemetry warning" do
+    parent = self()
     crown_name = unique_name()
+    handler_id = "test_unexpected_info_#{:erlang.unique_integer([:positive])}"
 
-    # OracleMock skips optional callbacks, so handle_info/2 is not exported.
-    # Crown should detect this and drop unknown messages without crashing.
+    :telemetry.attach(
+      handler_id,
+      [:crown, :process, :unexpected_info],
+      fn _, _, %{message: msg}, _ -> send(parent, {:unexpected_info, msg}) end,
+      []
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
     Crown.OracleMock
     |> expect(:init, fn _ -> {:ok, :state} end)
-    |> expect(:claim, fn :state -> {true, :infinity, :state} end)
+    |> expect(:claim, fn :state ->
+      send(parent, :claimed)
+      {true, :infinity, :state}
+    end)
 
     {:ok, pid} =
       Crown.start_link(
@@ -984,9 +1059,10 @@ defmodule CrownTest do
         child_spec: nil
       )
 
+    assert_receive :claimed
     assert_leader(pid)
     send(pid, :some_unknown_message)
-    assert_leader(pid)
+    assert_receive {:unexpected_info, :some_unknown_message}, 500
     assert Process.alive?(pid)
     stop_and_wait(pid)
   end

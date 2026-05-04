@@ -5,7 +5,7 @@ defmodule Crown.TelemetryLogger do
     # Process lifecycle
     [:crown, :process, :initialized] => :info,
     [:crown, :process, :terminating] => :info,
-    [:crown, :process, :unexpected_info] => :error,
+    [:crown, :process, :unexpected_info] => :warning,
 
     # Leadership
     [:crown, :leadership, :claimed] => :info,
@@ -13,6 +13,7 @@ defmodule Crown.TelemetryLogger do
     [:crown, :leadership, :refreshed] => :debug,
     [:crown, :leadership, :lost] => :warning,
     [:crown, :leadership, :conflict] => :warning,
+    [:crown, :leadership, :duplicate_leader] => :warning,
     [:crown, :leadership, :invalid_claim] => :error,
 
     # Monitor
@@ -156,6 +157,19 @@ defmodule Crown.TelemetryLogger do
 
   def handle_event([:crown, :leadership, :conflict] = p, _, %{name: name}, _) do
     log(p, "[crown] #{name} lost global name conflict, shutting down", %{crown_name: name})
+  end
+
+  def handle_event(
+        [:crown, :leadership, :duplicate_leader] = p,
+        _,
+        %{name: name, leader_node: leader_node},
+        _
+      ) do
+    log(
+      p,
+      "[crown] #{name} oracle signalled leadership but a live leader already exists on #{inspect(leader_node)}, exiting",
+      %{crown_name: name, leader_node: leader_node}
+    )
   end
 
   def handle_event(
