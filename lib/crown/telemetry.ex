@@ -15,12 +15,14 @@ defmodule Crown.Telemetry do
 
       [:crown, :process,    :initialized]   # GenServer init complete
       [:crown, :process,    :terminating]    # GenServer terminate/2 called
+      [:crown, :process,    :unexpected_info] # unknown message in handle_info/2
 
       [:crown, :leadership, :claimed]       # Oracle.claim returned {true, ...}
       [:crown, :leadership, :rejected]      # Oracle.claim returned {false, ...}
       [:crown, :leadership, :refreshed]     # Oracle.refresh returned {true, ...}
       [:crown, :leadership, :lost]          # Oracle.refresh returned {false, ...}
       [:crown, :leadership, :conflict]      # :global name conflict resolved against us
+      [:crown, :leadership, :invalid_claim] # oracle claimed leadership but global registration failed
 
       [:crown, :monitor,    :started]       # :global found leader, monitor established
       [:crown, :monitor,    :failed]        # :global returned :undefined (retry scheduled)
@@ -49,11 +51,13 @@ defmodule Crown.Telemetry do
   @events [
     [:crown, :process, :initialized],
     [:crown, :process, :terminating],
+    [:crown, :process, :unexpected_info],
     [:crown, :leadership, :claimed],
     [:crown, :leadership, :rejected],
     [:crown, :leadership, :refreshed],
     [:crown, :leadership, :lost],
     [:crown, :leadership, :conflict],
+    [:crown, :leadership, :invalid_claim],
     [:crown, :monitor, :started],
     [:crown, :monitor, :failed],
     [:crown, :monitor, :timeout],

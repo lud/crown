@@ -5,6 +5,8 @@ defmodule Crown.Oracles.PostgresLeaseClusterTest do
 
   @repo Crown.TestRepo
 
+  @moduletag :capture_log
+
   defp unique_name do
     # erlang unique integer resets on each test run, we want unique names over
     # time
@@ -17,8 +19,13 @@ defmodule Crown.Oracles.PostgresLeaseClusterTest do
     {:ok, cluster} =
       LocalCluster.start_link(num_nodes,
         prefix: "crown-peer-",
+        applications:
+          Application.loaded_applications()
+          |> List.keydelete(:dialyxir, 0)
+          |> Enum.map(&elem(&1, 0)),
         environment: [
           logger: [
+            level: :critical,
             default_formatter: [
               format: "PEER $metadata[$level] $message\n",
               metadata: [:node]

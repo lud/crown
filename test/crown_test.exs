@@ -6,6 +6,8 @@ defmodule CrownTest do
   setup :set_mox_global
   setup :verify_on_exit!
 
+  @moduletag :capture_log
+
   # --- Helpers ---
 
   defp unique_name do

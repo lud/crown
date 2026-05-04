@@ -24,8 +24,6 @@ defmodule Crown.Oracles.PostgresLease do
 
   alias Ecto.Adapters.SQL
 
-  require Logger
-
   defstruct [:repo, :lock_name, :holder, :duration, :refresh_delay]
 
   @table "crown_lease_v1"
@@ -58,7 +56,13 @@ defmodule Crown.Oracles.PostgresLease do
     holder = Atom.to_string(node())
     refresh_delay = div(duration * 1000, 2)
 
-    Logger.debug("initialize table#{@table}", node: node())
+    telemetry_exec([:crown, :oracle, :postgres_table_initialized], %{
+      table: @table,
+      repo: repo,
+      lock_name: lock_name,
+      holder: holder
+    })
+
     {:ok, _} = SQL.query(repo, @create_table_sql)
 
     state = %__MODULE__{
@@ -113,5 +117,9 @@ defmodule Crown.Oracles.PostgresLease do
       _ ->
         {false, state}
     end
+  end
+
+  defp telemetry_exec(event, metadata) do
+    :telemetry.execute(event, %{}, metadata)
   end
 end

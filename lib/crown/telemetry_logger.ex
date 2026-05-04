@@ -5,6 +5,7 @@ defmodule Crown.TelemetryLogger do
     # Process lifecycle
     [:crown, :process, :initialized] => :info,
     [:crown, :process, :terminating] => :info,
+    [:crown, :process, :unexpected_info] => :error,
 
     # Leadership
     [:crown, :leadership, :claimed] => :info,
@@ -12,6 +13,7 @@ defmodule Crown.TelemetryLogger do
     [:crown, :leadership, :refreshed] => :debug,
     [:crown, :leadership, :lost] => :warning,
     [:crown, :leadership, :conflict] => :warning,
+    [:crown, :leadership, :invalid_claim] => :error,
 
     # Monitor
     [:crown, :monitor, :started] => :debug,
@@ -22,7 +24,13 @@ defmodule Crown.TelemetryLogger do
     # Child
     [:crown, :child, :started] => :debug,
     [:crown, :child, :stopped] => :debug,
-    [:crown, :child, :exited] => :error
+    [:crown, :child, :exited] => :error,
+
+    # Oracle
+    [:crown, :oracle, :oban_peer_invalid_module] => :warning,
+    [:crown, :oracle, :oban_query_error] => :warning,
+    [:crown, :oracle, :oban_query_exit] => :warning,
+    [:crown, :oracle, :postgres_table_initialized] => :debug
   }
 
   @moduledoc """
@@ -102,6 +110,19 @@ defmodule Crown.TelemetryLogger do
     log(p, "[crown] #{name} terminating (#{inspect(reason)})", %{crown_name: name})
   end
 
+  def handle_event(
+        [:crown, :process, :unexpected_info] = p,
+        _,
+        %{name: name, phase: phase, message: message},
+        _
+      ) do
+    log(
+      p,
+      "[crown] unexpected info in Crown #{inspect(name)} / #{inspect(phase)}: #{inspect(message)}",
+      %{crown_name: name}
+    )
+  end
+
   # -- Leadership --------------------------------------------------------------
 
   def handle_event([:crown, :leadership, :claimed] = p, _, %{name: name, refresh_delay: delay}, _) do
@@ -133,6 +154,29 @@ defmodule Crown.TelemetryLogger do
 
   def handle_event([:crown, :leadership, :conflict] = p, _, %{name: name}, _) do
     log(p, "[crown] #{name} lost global name conflict, shutting down", %{crown_name: name})
+  end
+
+  def handle_event(
+        [:crown, :leadership, :invalid_claim] = p,
+        _,
+        %{
+          name: name,
+          global_name: gname,
+          ocl_mod: ocl_mod,
+          callback: callback,
+          ocl_state: ocl_state
+        },
+        _
+      ) do
+    message =
+      "[crown] #{name} could not register with :global.register_name(#{inspect(gname)}, #{inspect(self())}, ...) " <>
+        "despite oracle #{inspect(ocl_mod)}.#{callback}(#{inspect(ocl_state)}) returning {true, ...}"
+
+    log(
+      p,
+      message,
+      %{crown_name: name}
+    )
   end
 
   # -- Monitor -----------------------------------------------------------------
@@ -206,6 +250,60 @@ defmodule Crown.TelemetryLogger do
     })
   end
 
+  # -- Oracle ------------------------------------------------------------------
+
+  def handle_event(
+        [:crown, :oracle, :oban_peer_invalid_module] = p,
+        _,
+        %{oban_name: oban_name, peer_module: peer_module} = metadata,
+        _
+      ) do
+    log(
+      p,
+      "[crown] Oban oracle peer module #{inspect(peer_module)} does not export leader?/2 for #{inspect(oban_name)}",
+      maybe_put_crown_name(%{}, metadata)
+    )
+  end
+
+  def handle_event(
+        [:crown, :oracle, :oban_query_error] = p,
+        _,
+        %{oban_name: oban_name, error: error} = metadata,
+        _
+      ) do
+    log(
+      p,
+      "[crown] Oban oracle could not query leadership for #{inspect(oban_name)}: #{error}",
+      maybe_put_crown_name(%{}, metadata)
+    )
+  end
+
+  def handle_event(
+        [:crown, :oracle, :oban_query_exit] = p,
+        _,
+        %{oban_name: oban_name, reason: reason} = metadata,
+        _
+      ) do
+    log(
+      p,
+      "[crown] Oban oracle leadership check exited for #{inspect(oban_name)}: #{inspect(reason)}",
+      maybe_put_crown_name(%{}, metadata)
+    )
+  end
+
+  def handle_event(
+        [:crown, :oracle, :postgres_table_initialized] = p,
+        _,
+        %{table: table, lock_name: lock_name, repo: repo},
+        _
+      ) do
+    log(
+      p,
+      "[crown] Postgres lease table #{table} initialized for lock #{inspect(lock_name)} on #{inspect(repo)}",
+      %{}
+    )
+  end
+
   # -- Catchall ----------------------------------------------------------------
 
   if Mix.env() == :test do
@@ -236,5 +334,17 @@ defmodule Crown.TelemetryLogger do
   defp log(prefix, message, metadata) do
     level = Map.fetch!(events(), prefix)
     Logger.log(level, message, metadata)
+  end
+
+  defp maybe_put_crown_name(metadata, %{crown_name: nil}) do
+    metadata
+  end
+
+  defp maybe_put_crown_name(metadata, %{crown_name: crown_name}) do
+    Map.put(metadata, :crown_name, crown_name)
+  end
+
+  defp maybe_put_crown_name(metadata, _metadata) do
+    metadata
   end
 end

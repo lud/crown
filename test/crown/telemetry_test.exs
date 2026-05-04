@@ -6,6 +6,8 @@ defmodule Crown.TelemetryTest do
   setup :set_mox_global
   setup :verify_on_exit!
 
+  @moduletag :capture_log
+
   defp unique_name do
     :"crown_tel_#{:erlang.unique_integer([:positive])}"
   end
@@ -350,16 +352,18 @@ defmodule Crown.TelemetryTest do
 
   # --- Crown.Telemetry.events/0 ---
 
-  test "Crown.Telemetry.events/0 returns all 14 event names" do
+  test "Crown.Telemetry.events/0 returns all 16 event names" do
     events = Crown.Telemetry.events()
-    assert length(events) == 14
+    assert length(events) == 16
     assert [:crown, :process, :initialized] in events
     assert [:crown, :process, :terminating] in events
+    assert [:crown, :process, :unexpected_info] in events
     assert [:crown, :leadership, :claimed] in events
     assert [:crown, :leadership, :rejected] in events
     assert [:crown, :leadership, :refreshed] in events
     assert [:crown, :leadership, :lost] in events
     assert [:crown, :leadership, :conflict] in events
+    assert [:crown, :leadership, :invalid_claim] in events
     assert [:crown, :monitor, :started] in events
     assert [:crown, :monitor, :failed] in events
     assert [:crown, :monitor, :timeout] in events

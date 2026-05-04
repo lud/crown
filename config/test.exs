@@ -9,4 +9,4 @@ config :crown, Crown.TestRepo,
   pool_size: 10,
   log: false
 
-# config :logger, level: :warning
+config :logger, level: :debug

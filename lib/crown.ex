@@ -116,8 +116,6 @@ defmodule Crown do
 
   use GenServer
 
-  require Logger
-
   @gen_opts ~w(name timeout debug spawn_opt hibernate_after)a
   @options_schema options_schema
 
@@ -255,9 +253,7 @@ defmodule Crown do
     {:noreply, state}
   end
 
-  def handle_info({:EXIT, pid, reason}, %State{sup: {pid, kind}} = state) do
-    Logger.error("Child crashed: #{inspect(kind)}")
-
+  def handle_info({:EXIT, pid, reason}, %State{sup: {pid, _kind}} = state) do
     {:stop, _reason, _state} = handle_event({:SUP_EXIT, reason}, state)
   end
 
@@ -266,9 +262,7 @@ defmodule Crown do
   end
 
   def handle_info(message, state) do
-    Logger.error(
-      "unexpected info in Crown #{inspect(state.name)} / #{inspect(state.phase)}: #{inspect(message)}"
-    )
+    telemetry_exec([:crown, :process, :unexpected_info], state, %{message: message})
 
     {:noreply, state}
   end
@@ -523,8 +517,7 @@ defmodule Crown do
     %{state | sup: sup}
   end
 
-  defp ensure_child_started(%State{sup: {_, other_kind}} = state, kind) do
-    Logger.info("stopping child for #{inspect(other_kind)}")
+  defp ensure_child_started(%State{sup: {_, _other_kind}} = state, kind) do
     state = teardown_child(state)
     ensure_child_started(state, kind)
   end
@@ -561,9 +554,12 @@ defmodule Crown do
         %{ocl_mod: ocl_mod, ocl_state: ocl_state} = state
         gname = global_name(state.name)
 
-        Logger.error(
-          "could not register with :global.register_name(#{inspect(gname)}, #{inspect(self())}, ...) despite oracle #{inspect(ocl_mod)}.#{callback}(#{inspect(ocl_state)}) returning {true, ...}"
-        )
+        telemetry_exec([:crown, :leadership, :invalid_claim], state, %{
+          callback: callback,
+          global_name: gname,
+          ocl_mod: ocl_mod,
+          ocl_state: ocl_state
+        })
 
         exit(:invalid_claim)
     end

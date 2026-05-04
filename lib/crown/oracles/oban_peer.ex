@@ -26,14 +26,12 @@ defmodule Crown.Oracles.ObanPeer do
 
   @behaviour Crown.Oracle
 
-  require Logger
-
   @default_oban_name Oban
   @default_peer_module Oban.Peer
   @default_timeout 5_000
   @default_refresh_delay 5_000
 
-  defstruct [:oban_name, :timeout, :refresh_delay, :peer_module]
+  defstruct [:oban_name, :timeout, :refresh_delay, :peer_module, :crown_name]
 
   @impl Crown.Oracle
   def init(opts) do
@@ -47,7 +45,8 @@ defmodule Crown.Oracles.ObanPeer do
         oban_name: oban_name,
         timeout: timeout,
         refresh_delay: refresh_delay,
-        peer_module: Keyword.get(opts, :peer_module, @default_peer_module)
+        peer_module: Keyword.get(opts, :peer_module, @default_peer_module),
+        crown_name: Keyword.get(opts, :crown_name)
       }
 
       {:ok, state}
@@ -72,32 +71,45 @@ defmodule Crown.Oracles.ObanPeer do
     end
   end
 
-  defp oban_leader?(%__MODULE__{peer_module: peer_module, oban_name: oban_name, timeout: timeout}) do
+  defp oban_leader?(%__MODULE__{
+         peer_module: peer_module,
+         oban_name: oban_name,
+         timeout: timeout,
+         crown_name: crown_name
+       }) do
     if function_exported?(peer_module, :leader?, 2) do
       peer_module.leader?(oban_name, timeout)
     else
-      Logger.warning("Oban oracle peer module does not export leader?/2",
-        peer_module: inspect(peer_module)
-      )
+      telemetry_exec([:crown, :oracle, :oban_peer_invalid_module], %{
+        crown_name: crown_name,
+        oban_name: oban_name,
+        peer_module: peer_module
+      })
 
       false
     end
   rescue
     exception ->
-      Logger.warning("Oban oracle could not query leadership",
-        oban_name: inspect(oban_name),
+      telemetry_exec([:crown, :oracle, :oban_query_error], %{
+        crown_name: crown_name,
+        oban_name: oban_name,
         error: Exception.message(exception)
-      )
+      })
 
       false
   catch
     :exit, reason ->
-      Logger.warning("Oban oracle leadership check exited",
-        oban_name: inspect(oban_name),
-        reason: inspect(reason)
-      )
+      telemetry_exec([:crown, :oracle, :oban_query_exit], %{
+        crown_name: crown_name,
+        oban_name: oban_name,
+        reason: reason
+      })
 
       false
+  end
+
+  defp telemetry_exec(event, metadata) do
+    :telemetry.execute(event, %{}, metadata)
   end
 
   defp validate_non_neg_integer(_key, value) when is_integer(value) and value >= 0 do
