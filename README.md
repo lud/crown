@@ -32,7 +32,7 @@ to claim again as soon as it goes down.
 ```elixir
 def deps do
   [
-    {:crown, "~> 0.2"},
+    {:crown, "~> 0.3"},
   ]
 end
 ```
