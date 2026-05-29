@@ -1,4 +1,6 @@
-System.cmd("epmd", ~w(-daemon))
+{epmd_state, 0} = System.cmd("epmd", ~w(-names))
+IO.puts(:stderr, epmd_state)
+{_, 0} = System.cmd("epmd", ~w(-daemon))
 :ok = LocalCluster.start()
 
 Application.stop(:logger)
