@@ -43,8 +43,10 @@ jobs:
 
     strategy:
       matrix:
-        elixir: ["1.19","1.18"]
-        otp: ["28","27"]
+        elixir: ["1.20","1.19"]
+        otp: ["29","28"]
+        
+        exclude: [{"otp":29,"elixir":"1.19"}]
         
 
     name: "Test ${{matrix.elixir}}-otp-${{matrix.otp}}"
@@ -75,7 +77,7 @@ jobs:
         run: mix test
 
       - name: Check Formatting
-        if: ${{ matrix.elixir == '1.19' }}
+        if: ${{ matrix.elixir == '1.20' }}
         run: mix format --check-formatted
 
       - name: Run Credo
