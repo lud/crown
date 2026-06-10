@@ -17,14 +17,14 @@ defmodule Crown.TelemetryLogger do
     [:crown, :leadership, :invalid_claim] => :error,
 
     # Monitor
-    [:crown, :monitor, :started] => :debug,
+    [:crown, :monitor, :started] => :info,
     [:crown, :monitor, :failed] => :warning,
     [:crown, :monitor, :timeout] => :warning,
     [:crown, :monitor, :leader_down] => :warning,
 
     # Child
-    [:crown, :child, :started] => :debug,
-    [:crown, :child, :stopped] => :debug,
+    [:crown, :child, :started] => :info,
+    [:crown, :child, :stopped] => :info,
     [:crown, :child, :exited] => :error,
 
     # Oracle
