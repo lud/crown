@@ -57,7 +57,6 @@ defmodule Crown.MixProject do
     [
       {:nimble_options, "~> 1.0"},
       {:telemetry, "~> 1.0"},
-      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:mox, "~> 1.0", only: :test},
       {:local_cluster, "~> 2.0", only: :test},
 
@@ -68,10 +67,7 @@ defmodule Crown.MixProject do
       {:postgrex, ">= 0.0.0", only: :test},
 
       # Dev
-      {:dialyxir, ">= 0.0.0", only: [:dev, :test], runtime: false},
-      {:credo, ">= 0.0.0", only: [:dev, :test], runtime: false},
-      {:ex_check, ">= 0.0.0", only: [:dev, :test], runtime: false},
-      {:mix_audit, ">= 0.0.0", only: [:dev, :test], runtime: false},
+      {:libdev, ">= 0.0.0", only: [:dev, :test], runtime: false},
       {:readmix, ">= 0.0.0", only: [:dev, :test], runtime: false},
       {:quokka, ">= 0.0.0", only: [:dev, :test], runtime: false}
     ]
