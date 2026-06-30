@@ -52,6 +52,9 @@ defmodule Crown.TelemetryLogger do
 
   @events events
 
+  @doc """
+  Returns the list of telemetry event names emitted by Crown.
+  """
   def events do
     unquote(Map.keys(events))
   end
@@ -60,6 +63,19 @@ defmodule Crown.TelemetryLogger do
     @events
   end
 
+  @doc """
+  Attaches the logging handler to Crown's telemetry events.
+
+  With no argument every event is logged at its predefined level. `filters`
+  narrows what gets attached:
+
+    * `:min_log_level` - only attach events whose level is at or above this
+      level (`:debug`, `:info`, `:warning`, `:error`).
+    * `:prefixes` - a list of event-name prefixes; only events whose name
+      starts with one of them are attached, e.g. `[[:crown, :leadership]]`.
+
+  Returns `:ok`. Usually called through `Crown.attach_default_logger/1`.
+  """
   def attach(filters \\ []) do
     :telemetry.attach_many(
       __MODULE__,

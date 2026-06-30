@@ -111,7 +111,7 @@ defmodule Crown do
 
   Crown emits telemetry events under the `[:crown, ...]` prefix. Use
   `attach_default_logger/1` for built-in logging or attach your own handlers.
-  See `Crown.Telemetry` for the full list of events.
+  See `Crown.TelemetryLogger` for the full list of events.
   """
 
   use GenServer
@@ -127,11 +127,30 @@ defmodule Crown do
     %{id: name, start: {Crown, :start_link, [opts]}, type: :supervisor}
   end
 
+  @doc """
+  Starts a Crown process linked to the current process.
+
+  `opts` is the keyword list described under "Options" in the module
+  documentation. GenServer options (`:name`, `:timeout`, `:debug`,
+  `:spawn_opt`, `:hibernate_after`) may be mixed in and are forwarded to
+  `GenServer.start_link/3`. The process is registered locally under `:name`.
+
+  Returns `{:ok, pid}` on success, or one of the `t:GenServer.on_start/0`
+  error values. Applications usually start Crown from a supervisor through
+  `child_spec/1` rather than calling this directly.
+  """
   def start_link(opts) do
     {gen_opts, opts} = start_opts(opts)
     GenServer.start_link(__MODULE__, opts, gen_opts)
   end
 
+  @doc """
+  Starts a Crown process without linking it to the current process.
+
+  Accepts the same options as `start_link/1` and forwards GenServer options
+  to `GenServer.start/3`. Returns `{:ok, pid}` on success, or one of the
+  `t:GenServer.on_start/0` error values.
+  """
   def start(opts) do
     {gen_opts, opts} = start_opts(opts)
     GenServer.start(__MODULE__, opts, gen_opts)
@@ -143,10 +162,22 @@ defmodule Crown do
     {gen_opts, Keyword.put(opts, :name, name)}
   end
 
+  @doc """
+  Stops the Crown process referenced by `server`.
+
+  When the process holds the crown, stopping it runs a clean shutdown: the
+  supervised child is torn down before leadership is released through the
+  oracle, so another node can safely claim the crown afterwards.
+  """
   def stop(server) do
     GenServer.stop(server)
   end
 
+  @doc """
+  Returns `true` when `server` currently holds the crown.
+
+  This is a convenience over `status/1` that only reports leadership.
+  """
   def leader?(server) do
     case status(server) do
       {:leading, _} -> true
@@ -154,14 +185,50 @@ defmodule Crown do
     end
   end
 
+  @doc """
+  Returns the current `{phase, leader_node}` of `server`.
+
+  `phase` is one of:
+
+    * `:init` - the process has started but not yet attempted a claim.
+    * `:leading` - the process holds the crown on the local node.
+    * `:following` - another node holds the crown and this process follows it.
+    * `:finishing` - the process is shutting down.
+
+  `leader_node` is the node currently believed to hold the crown, or `nil`
+  when no leader is known.
+  """
   def status(server) do
     GenServer.call(server, :status)
   end
 
+  @doc """
+  Attaches the built-in telemetry logger for Crown events.
+
+  `filters` is forwarded to `Crown.TelemetryLogger.attach/1` to narrow which
+  events are logged:
+
+    * `:min_log_level` - only log events at or above this level.
+    * `:prefixes` - only log events whose name starts with one of the given
+      prefixes, e.g. `[[:crown, :leadership]]`.
+
+  Returns `:ok`.
+  """
   def attach_default_logger(filters \\ []) do
     Crown.TelemetryLogger.attach(filters)
   end
 
+  @doc """
+  Returns the term used to register the leader of `name` with `:global`.
+
+  The elected leader registers itself under this name so followers on other
+  nodes can discover and monitor it.
+
+  ## Examples
+
+      iex> Crown.global_name(:my_worker)
+      {Crown, :my_worker}
+  """
   def global_name(name) when is_atom(name) do
     {__MODULE__, name}
   end

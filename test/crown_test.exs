@@ -8,6 +8,8 @@ defmodule CrownTest do
 
   @moduletag :capture_log
 
+  doctest Crown
+
   # --- Helpers ---
 
   defp unique_name do
