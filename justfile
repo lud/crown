@@ -1,4 +1,4 @@
-deps:
+_mix_deps:
   mix deps.get
 
 test:
@@ -24,4 +24,4 @@ _libdev_check:
 _git_status:
   git status
 
-check: format readmix _libdev_check _git_status
+check: _mix_deps format readmix _libdev_check _git_status
