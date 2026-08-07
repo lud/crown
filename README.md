@@ -30,7 +30,7 @@ to claim again as soon as it goes down.
 
 <!-- rdmx :app_dep vsn:$app_vsn -->
 ```elixir
-def deps do
+defp deps do
   [
     {:crown, "~> 0.3"},
   ]
