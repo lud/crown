@@ -94,6 +94,12 @@ that already run Oban and want to piggyback on its election.
   telemetry event.
 * The refresh delay defaults to 15 seconds. Because Oban manages the
   underlying lease, no `abdicate/1` is needed.
+* `Oban.Peer.leader?/2` reports the belief from Oban's last election, so a
+  leadership change reaches Crown within one Oban election interval (about 15
+  seconds while leading) plus one refresh delay.
+* Leadership comes from an Oban instance running with plugins enabled. Use Oban
+  2.23.1 or later, where a peer that loses its lease demotes at the next
+  election and Crown follows it down.
 
 <!-- rdmx :section name:oban_peer_example format:true -->
 ```elixir

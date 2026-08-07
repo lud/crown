@@ -12,8 +12,24 @@ if Code.ensure_loaded?(Oban) do
         `Oban.Peer.leader?/2`.
       * `:timeout` (optional, default `5000`) - timeout in milliseconds for
         `Oban.Peer.leader?/2`.
-      * `:refresh_delay` (optional, default `5000`) - milliseconds until the next
+      * `:refresh_delay` (optional, default `15000`) - milliseconds until the next
         leadership check after a successful claim/refresh.
+
+    ## Leadership handover
+
+    `Oban.Peer.leader?/2` returns the belief the peer computed during its last
+    election. Database peers hold a 30 second lease and re-elect roughly every
+    15 seconds while leading, so Crown observes a leadership change within one
+    Oban election interval plus one `:refresh_delay`.
+
+    Crown claims the crown on the node where Oban peering elects a leader, which
+    requires an Oban instance running with plugins enabled. Instances configured
+    with `plugins: false` or started in one of Oban's testing modes use
+    `Oban.Peers.Isolated` with `leader?: false`, so leadership comes from another
+    oracle in those setups.
+
+    Use Oban 2.23.1 or later, where a peer that loses its lease demotes at the
+    next election and Crown follows it down.
 
     ## Example
 
