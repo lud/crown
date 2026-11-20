@@ -27,5 +27,5 @@
   "quokka": {:hex, :quokka, "2.13.1", "10851ba49ce47cb65cb74b252fd7bfb8f9f78d6a0b1908228f1dae4b65c32939", [:mix], [{:credo, "~> 1.7", [hex: :credo, repo: "hexpm", optional: false]}], "hexpm", "f6b3c60d333f76e5e131b9d4b55aed50e989589ee4cb3dc646176ceec26bf0f5"},
   "readmix": {:hex, :readmix, "0.8.2", "0b4c0498f69aa9c0bef0351f146c8deb3000156cd14bbcb26e205f25b273733e", [:mix], [{:cli_mate, "~> 0.10", [hex: :cli_mate, repo: "hexpm", optional: false]}, {:nimble_options, "~> 1.0", [hex: :nimble_options, repo: "hexpm", optional: false]}], "hexpm", "49e3bf1810ea424f7224ff9202e8ee2559081e2a725bfd5ce61cc20052f25c23"},
   "sobelow": {:hex, :sobelow, "0.18.1", "a8f175c6f2ba87fb7be536742b07cb1e6bc9297305a237f383b63c05ff55582b", [:mix], [{:jason, "~> 1.0", [hex: :jason, repo: "hexpm", optional: false]}], "hexpm", "57247d54ad77477bed63c72239ddfdb6e94d09261323de0101f9a8bcc0247c82"},
-  "telemetry": {:hex, :telemetry, "1.4.2", "a0cb522801dffb1c49fe6e30561badffc7b6d0e180db1300df759faa22062855", [:rebar3], [], "hexpm", "928f6495066506077862c0d1646609eed891a4326bee3126ba54b60af61febb1"},
+  "telemetry": {:hex, :telemetry, "1.4.3", "d0333fa869361e6833d6ff8e806ff4d8553fe1332fcce0af86c7381951a1dc2f", [:rebar3], [], "hexpm", "17a63581cf2e832a238287f5fe6811e8ca1f333249f1376ad653164a3c4770d4"},
 }
